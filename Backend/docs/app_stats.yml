@@ -1,0 +1,35 @@
+openapi: 3.0.0
+info:
+  title: SHRAVAN App Statistics API
+  version: 1.0.0
+  description: API endpoint for retrieving overall application statistics
+
+paths:
+  /api/stats:
+    get:
+      summary: Get application statistics
+      description: Retrieves counts of users, doctors, reminders, and emergency contacts
+      responses:
+        '200':
+          description: Successfully returned statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: integer
+                    description: Total number of users registered in the application
+                    example: 1500
+                  doctors:
+                    type: integer
+                    description: Total number of healthcare professionals registered
+                    example: 75
+                  reminders:
+                    type: integer
+                    description: Total number of reminders set by all users
+                    example: 8400
+                  emergencyContacts:
+                    type: integer
+                    description: Total number of emergency contacts added by all users
+                    example: 3200
