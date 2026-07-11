@@ -1,4 +1,4 @@
-Shravan — Digital Health Companion for Senior Citizens
+# Shravan — Digital Health Companion for Senior Citizens
 
 Shravan is a health-management platform built for senior citizens and the people who support them — medicine reminders, symptom logging, a health/companion chatbot, yoga guidance, and doctor/pharmacy/hospital finders, with separate dashboards for the senior, their caretaker, and an NGO/health-worker role.
 
