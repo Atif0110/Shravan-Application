@@ -1,3 +1,56 @@
+Shravan — Digital Health Companion for Senior Citizens
+
+Shravan is a health-management platform built for senior citizens and the people who support them — medicine reminders, symptom logging, a health/companion chatbot, yoga guidance, and doctor/pharmacy/hospital finders, with separate dashboards for the senior, their caretaker, and an NGO/health-worker role.
+
+Named after the symbol of devotion and care in Indian culture, Shravan aims to make day-to-day health management simpler for elderly users and give the people caring for them visibility into that care.
+
+> This README documents the **Frontend (Vue.js) + Backend (Flask)** web app, which is the actively maintained part of this repo. A separate Flutter mobile app lives in `mobile-application/` — see its own README for that.
+
+---
+
+## ✨ Features
+
+- **Medicine reminders** — add medicines with timing/frequency, mark them taken through the day; status is stored per day so it survives navigating away and coming back.
+- **Health chatbot** — Groq-powered assistant for general health questions (not a diagnostic tool).
+- **Personal companion chatbot** — a more conversational assistant aimed at reducing loneliness, with voice input/output.
+- **Age-Friendly Yoga** — asana animations and instructional videos suited to older adults.
+- **Doctor / Hospital / Pharmacy finder** — search your own database of doctors, or find nearby facilities via Google Maps.
+- **Health trends (NGO role)** — aggregated symptom-report trends by pincode, for health workers monitoring a community.
+- **Three account roles** — `user` (the senior/primary account), `caretaker`, and `ngo`, each with their own dashboard.
+
+---
+
+## 🏗️ Tech Stack
+
+| Layer | Stack |
+|---|---|
+| Frontend | Vue 3 (Composition API, `<script setup>`), Vue Router, Vite |
+| Backend | Flask, SQLAlchemy, Flask-Session (server-side sessions) |
+| Database | SQLite by default (via SQLAlchemy — swappable) |
+| AI / external APIs | Groq (chat + web-scraping extraction), Google Gemini, Google Maps (Places), YouTube Data API |
+| Auth | Session-cookie based (not JWT) — see [Authentication](#-authentication--sessions) below |
+
+---
+
+## 📂 Project Structure
+Shravan-Application/
+├── Backend/                  # Flask API
+│   ├── app.py                 # App entrypoint, DB init, seed data
+│   ├── config.py              # Flask config, CORS, session cookie settings
+│   ├── models.py              # SQLAlchemy models
+│   ├── routes_*.py            # Route modules (users, reminders, health, asanas, doctors, analytics, ...)
+│   ├── modules/                # Chatbot, web scraper, nearby-places, generative AI wrappers
+│   ├── docs/                   # Flasgger/Swagger YAML specs per endpoint
+│   ├── populate_yoga_data.py   # Seeds yoga asana data (runs automatically on first boot)
+│   └── requirements.txt
+├── Frontend/                 # Vue.js web app
+│   ├── src/
+│   │   ├── views/              # One component per screen/route
+│   │   ├── router/index.js     # All routes + auth guards
+│   │   └── stores/auth.js      # Pinia auth store
+│   └── package.json
+└── mobile-application/       # Flutter app (separate, see its own README)
+
 ---
 
 ## 🚀 Getting Started
