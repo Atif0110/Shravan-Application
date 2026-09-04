@@ -1,4 +1,5 @@
 <script setup>
+import { secureFetch } from '@/api'
 import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 
@@ -7,27 +8,25 @@ const reminders = ref([])
 
 async function fetchReminders() {
   try {
-    const res = await fetch(`${backend_url}/api/reminders`, {
+    const res = await secureFetch(`${backend_url}/api/reminders`, {
       credentials: 'include'
     })
     const data = await res.json()
     // Backend returns { status, reminders: [...] } -- unwrap the array.
     reminders.value = data.reminders || []
   } catch (err) {
-    console.error('Error fetching reminders:', err)
   }
 }
 
 
 async function deleteReminder(id) {
   try {
-    await fetch(`${backend_url}/api/reminders/${id}`, {
+    await secureFetch(`${backend_url}/api/reminders/${id}`, {
       method: 'DELETE',
       credentials: 'include'
     })
     reminders.value = reminders.value.filter(r => r.reminder_id !== id)
   } catch (err) {
-    console.error('Error deleting reminder:', err)
   }
 }
 

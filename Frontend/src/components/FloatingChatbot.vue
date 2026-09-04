@@ -1,9 +1,9 @@
 <template>
   <div class="floating-chatbot" :class="{ 'expanded': isOpen, 'dark-mode': isDarkMode }">
     <!-- Chatbot button (visible when chat is closed) -->
-    <button 
-      v-if="!isOpen" 
-      @click="openChat" 
+    <button
+      v-if="!isOpen"
+      @click="openChat"
       class="chat-button"
       :aria-label="'Open chat assistant'"
     >
@@ -23,16 +23,23 @@
           </div>
         </div>
         <div class="header-controls">
-          <button 
-            @click="toggleExpanded" 
-            class="expand-button" 
+          <button
+            @click="toggleExpanded"
+            class="expand-button"
             :title="isExpanded ? 'Minimize chat' : 'Expand chat'"
           >
             <span class="material-icons">{{ isExpanded ? 'fullscreen_exit' : 'fullscreen' }}</span>
           </button>
-          <button 
-            @click="clearChatHistory" 
-            class="clear-button" 
+          <button
+            @click="toggleSpeech"
+            class="clear-button"
+            :title="speechEnabled ? 'Turn off voice replies' : 'Turn on voice replies'"
+          >
+            <span class="material-icons">{{ speechEnabled ? 'volume_up' : 'volume_off' }}</span>
+          </button>
+          <button
+            @click="clearChatHistory"
+            class="clear-button"
             title="Clear chat history"
           >
             <span class="material-icons">refresh</span>
@@ -49,8 +56,8 @@
           <span class="material-icons">forum</span>
           <p>Ask me anything about your health, medications, or care!</p>
           <div class="suggested-prompts">
-            <button 
-              v-for="prompt in suggestedPrompts" 
+            <button
+              v-for="prompt in suggestedPrompts"
               :key="prompt"
               @click="sendSuggestedMessage(prompt)"
               class="suggested-prompt"
@@ -59,12 +66,12 @@
             </button>
           </div>
         </div> -->
-        
-        <div v-for="(msg, index) in messages" :key="index" 
+
+        <div v-for="(msg, index) in messages" :key="index"
              :class="['message-bubble', msg.sender]">
           <div class="message-content">
-            <div v-if="msg.sender === 'bot'" 
-                 class="markdown-content" 
+            <div v-if="msg.sender === 'bot'"
+                 class="markdown-content"
                  v-html="parseMarkdown(msg.text)">
             </div>
             <p v-else>{{ msg.text }}</p>
@@ -95,17 +102,17 @@
             @keydown.enter.prevent="sendMessage"
             ref="inputField"
           />
-          <button 
-            type="button" 
-            @click="startListening" 
+          <button
+            type="button"
+            @click="startListening"
             :disabled="!supportsSpeech || isProcessing"
             class="voice-btn"
             :class="{ 'listening': isListening }"
           >
             <span class="material-icons">{{ isListening ? 'mic' : 'mic_none' }}</span>
           </button>
-          <button 
-            type="button" 
+          <button
+            type="button"
             class="send-btn"
             :disabled="!userInput.trim() || isProcessing"
             @click="sendMessage"
@@ -113,6 +120,7 @@
             <span class="material-icons">send</span>
           </button>
         </form>
+        <p v-if="voiceNotice" class="voice-notice">{{ voiceNotice }}</p>
       </div>
     </div>
   </div>
@@ -164,6 +172,13 @@ const chatHistory = computed({
 });
 
 let recognition: any = null;
+let speechBuffer = '';
+
+// Voice replies can be switched off by seniors who find sudden audio
+// startling -- the choice is remembered for next time.
+const speechEnabled = ref(localStorage.getItem('shravan_tts_enabled') !== 'off');
+// Short, friendly status/error line shown just above the input box.
+const voiceNotice = ref('');
 
 // Open the chat widget
 const openChat = () => {
@@ -185,49 +200,87 @@ const closeChat = () => {
 onMounted(() => {
   // Initialize with a welcome message only when first opened
   if (messages.value.length === 0) {
-    chatbotStore.addMessage({ 
-      text: "Hello! I'm SHRAVAN, your health assistant. How can I help you today?", 
+    chatbotStore.addMessage({
+      text: "Hello! I'm SHRAVAN, your health assistant. How can I help you today?",
       sender: 'bot',
       time: getCurrentTime()
     });
   }
-  
+
   // Initialize speech recognition
   const SpeechRecognitionClass =
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
+
   if (SpeechRecognitionClass) {
     supportsSpeech.value = true;
     recognition = new SpeechRecognitionClass();
     recognition.lang = 'en-IN';
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    // Keep listening through natural pauses (continuous) and show partial
+    // words live in the box, but only send the message once the browser
+    // decides there is a real pause -- fixes the old behaviour where a
+    // sentence got cut off after the first word or two.
+    recognition.continuous = true;
+    recognition.interimResults = true;
 
     recognition.onstart = () => {
       isListening.value = true;
+      speechBuffer = '';
+      // If the assistant is still talking from the previous answer, cut it
+      // short -- nobody likes being talked over.
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     };
 
     recognition.onend = () => {
       isListening.value = false;
+      if (speechBuffer.trim()) {
+        userInput.value = speechBuffer.trim();
+        speechBuffer = '';
+        sendMessage();
+      }
     };
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      userInput.value = transcript;
-      sendMessage();
+      let finalTranscript = '';
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+      if (finalTranscript) {
+        speechBuffer += finalTranscript;
+      }
+      userInput.value = (speechBuffer + interimTranscript).trim();
     };
-    
-    recognition.onerror = () => {
+
+    recognition.onerror = (event: any) => {
       isListening.value = false;
+      const code = event && event.error;
+      if (code === 'no-speech') {
+        voiceNotice.value = "I didn't hear anything. Tap the mic and try again.";
+      } else if (code === 'not-allowed' || code === 'service-not-allowed') {
+        voiceNotice.value = 'Microphone access is blocked. Allow it in your browser settings, then try again.';
+        supportsSpeech.value = false;
+      } else if (code === 'network') {
+        voiceNotice.value = 'The voice service lost its connection. Check your internet and tap the mic again.';
+      } else {
+        voiceNotice.value = 'Voice input did not work this time. Please try again or type instead.';
+      }
+      speechBuffer = '';
+      // Let the message fade naturally instead of leaving it on screen forever.
+      window.setTimeout(() => { voiceNotice.value = ''; }, 6000);
     };
   }
 
   // Initialize dark mode from localStorage
   initializeDarkMode();
-  
+
   // Listen for localStorage changes
   window.addEventListener('storage', handleStorageChange);
-  
+
   // Listen for dark mode changes from the navbar
   window.addEventListener('darkModeChanged', initializeDarkMode);
 });
@@ -248,16 +301,16 @@ const getCurrentTime = () => {
 //Parse html with proper color classes
 const parseMarkdown = (text: string): string => {
   if (!text) return '';
-  
+
   // Split by lines to handle line-by-line processing
   let lines = text.split('\n');
   let html = '';
   let inList = false;
   let listItems: string[] = [];
-  
+
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].trim();
-    
+
     // Handle headers with explicit color styling
     if (line.startsWith('### ')) {
       if (inList) {
@@ -306,14 +359,14 @@ const parseMarkdown = (text: string): string => {
         listItems = [];
         inList = false;
       }
-      
+
       // Process bold and italic with color classes
       line = line.replace(/\*\*(.*?)\*\*/g, '<strong class="markdown-bold">$1</strong>');
       line = line.replace(/\*(.*?)\*/g, '<em class="markdown-italic">$1</em>');
-      
+
       // Process inline code with color classes
       line = line.replace(/`(.*?)`/g, '<code class="markdown-code">$1</code>');
-      
+
       html += `<p class="markdown-paragraph">${line}</p>`;
     }
     // Handle empty lines
@@ -328,15 +381,15 @@ const parseMarkdown = (text: string): string => {
       }
     }
   }
-  
+
   // Close any remaining list with color classes
   if (inList) {
     html += '<ul class="markdown-list">' + listItems.map(item => `<li class="markdown-item">${item}</li>`).join('') + '</ul>';
   }
-  
+
   // Handle code blocks with color classes (after line processing)
   html = html.replace(/```([\s\S]*?)```/g, '<pre class="markdown-pre"><code class="markdown-code-block">$1</code></pre>');
-  
+
   return html;
 };
 
@@ -363,7 +416,7 @@ const sendMessage = async () => {
       question: messageText,
       history: chatHistory.value
     };
-    
+
     // Make API call to backend
     const response = await axios.post(`${authStore.backend_url}/api/chatbot`, payload, {
       headers: {
@@ -373,13 +426,16 @@ const sendMessage = async () => {
 
     if (response.status === 200 && response.data.response) {
       const botResponse = response.data.response;
-      
+
       // Add bot message
       chatbotStore.addMessage({
         text: botResponse,
         sender: 'bot',
         time: getCurrentTime()
       });
+
+      // Read the answer aloud (if the speaker toggle is on).
+      speakReply(botResponse);
 
       // Update chat history for the current session
       chatbotStore.updateChatHistory({
@@ -392,10 +448,9 @@ const sendMessage = async () => {
 
     isProcessing.value = false;
   } catch (error) {
-    console.error('Error sending message:', error);
-    
+
     let errorMessage = "Sorry, I couldn't process your request. Please try again.";
-    
+
     // Handle specific error cases
     if (axios.isAxiosError(error)) {
       if (error.response?.status === 400) {
@@ -414,17 +469,55 @@ const sendMessage = async () => {
       sender: 'bot',
       time: getCurrentTime()
     });
-    
+
     isProcessing.value = false;
   }
 };
 
+// Turn the assistant's spoken replies on or off.
+const toggleSpeech = () => {
+  speechEnabled.value = !speechEnabled.value;
+  localStorage.setItem('shravan_tts_enabled', speechEnabled.value ? 'on' : 'off');
+  if (!speechEnabled.value && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+};
+
+// Read a bot reply out loud. Strips markdown symbols so the voice
+// doesn't stumble over asterisks and backticks.
+const speakReply = (text: string) => {
+  if (!speechEnabled.value || !('speechSynthesis' in window)) return;
+  const plain = String(text).replace(/[#*`>_\[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!plain) return;
+  const utterance = new SpeechSynthesisUtterance(plain.slice(0, 400));
+  const voices = window.speechSynthesis.getVoices();
+  utterance.voice =
+    voices.find(v => v.lang.startsWith('en-IN')) ||
+    voices.find(v => v.lang.startsWith('en')) ||
+    null;
+  utterance.rate = 0.95; // a touch slower suits older listeners
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+};
+
 // Trigger voice input
 const startListening = () => {
-  if (recognition && !isListening.value) {
+  if (!recognition) {
+    voiceNotice.value = "Voice input isn't supported in this browser, but you can still type your question.";
+    return;
+  }
+  // The recognition object ends up in a broken state after some errors,
+  // and calling start() on it then throws. Stopping it first resets it.
+  try {
+    if (isListening.value) {
+      recognition.stop();
+      return;
+    }
     recognition.start();
-  } else if (recognition && isListening.value) {
-    recognition.stop();
+  } catch (err) {
+    if (err && (err as any).name === 'InvalidStateError') {
+      recognition.stop();
+    }
   }
 };
 
@@ -458,8 +551,8 @@ const clearChatHistory = () => {
   chatbotStore.clearChat();
   // Add welcome message after clearing
   setTimeout(() => {
-    chatbotStore.addMessage({ 
-      text: "Hello! I'm SHRAVAN, your health assistant. How can I help you today?", 
+    chatbotStore.addMessage({
+      text: "Hello! I'm SHRAVAN, your health assistant. How can I help you today?",
       sender: 'bot',
       time: getCurrentTime()
     });
@@ -948,8 +1041,8 @@ function handleStorageChange(e) {
 
 /* Markdown elements with explicit colors */
 .markdown-content .markdown-header,
-.markdown-content h1, 
-.markdown-content h2, 
+.markdown-content h1,
+.markdown-content h2,
 .markdown-content h3 {
   margin: 10px 0 5px 0;
   color: #1f2937 !important;
@@ -1076,5 +1169,16 @@ function handleStorageChange(e) {
 /* Override any default styles */
 .markdown-content * {
   color: inherit !important;
+}
+.voice-notice {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  text-align: center;
+  color: #8a5a00;
+  line-height: 1.4;
+}
+
+.dark-mode .voice-notice {
+  color: #f0c674;
 }
 </style>

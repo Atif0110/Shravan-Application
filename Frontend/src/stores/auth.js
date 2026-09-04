@@ -1,201 +1,91 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
+import { secureFetch, refreshCsrfToken } from '@/api'
 
+export const auth = defineStore('auth', () => {
+  const backend_url = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'
+  const token = ref(null)
+  const user_details = ref(sessionStorage.getItem('user_details'))
 
-export const auth = defineStore('auth',()=>{
-    const backend_url = import.meta.env.VITE_BACKEND_URL
-    const token = ref(localStorage.getItem('token'))
-    const user_details = ref(localStorage.getItem('user_details'))
-    const username = computed(()=>JSON.parse(user_details.value).username)
-    const email = computed(()=> JSON.parse(user_details.value).email)
-    //const role = computed(()=>JSON.parse(user_details.value).role)
-    var role
-
-    // Reflects real login state (session-cookie based). The old token-based
-    // flow was never actually wired up on login, so basing this on `token`
-    // meant isAuthenticated was always false even right after logging in.
-    const isAuthenticated = computed(() => user_details.value !== null)
-
-    function updateToken(){
-        token.value = localStorage.getItem('token')
+  const parsedUser = computed(() => {
+    try {
+      return user_details.value ? JSON.parse(user_details.value) : null
+    } catch {
+      return null
     }
+  })
 
-    function updateUser(){
-        user_details.value = localStorage.getItem('user_details')
+  const username = computed(() => parsedUser.value?.username || '')
+  const email = computed(() => parsedUser.value?.email || '')
+  const role = computed(() => parsedUser.value?.role || null)
+  const isAuthenticated = computed(() => user_details.value !== null)
+
+  function updateUser() {
+    user_details.value = sessionStorage.getItem('user_details')
+  }
+
+  function removeUserDetails() {
+    sessionStorage.removeItem('user_details')
+    localStorage.removeItem('userName')
+    user_details.value = null
+  }
+
+  async function login(credentials) {
+    try {
+      await refreshCsrfToken()
+      const response = await secureFetch(`${backend_url}/api/users/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+      })
+      const data = await response.json()
+      if (!response.ok) return { status: false, message: data.error || 'Login failed' }
+
+      const details = {
+        user_id: data.user.user_id,
+        username: data.user.user_name,
+        role: data.user.role,
+        email: data.user.email,
+      }
+      sessionStorage.setItem('user_details', JSON.stringify(details))
+      localStorage.setItem('userName', data.user.user_name)
+      updateUser()
+      return { status: true, message: data.message, username: data.user.user_name, role: data.user.role }
+    } catch {
+      return { status: false, message: 'Unable to connect to the server' }
     }
+  }
 
-    function setToken(token){
-        localStorage.setItem('token',token)
+  async function register(details) {
+    try {
+      await refreshCsrfToken()
+      const response = await secureFetch(`${backend_url}/api/create_user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(details),
+      })
+      const data = await response.json()
+      return response.ok
+        ? { status: true, message: data.message }
+        : { status: false, message: data.error || 'Registration failed' }
+    } catch {
+      return { status: false, message: 'Unable to connect to the server' }
     }
+  }
 
-    function removeToken(){
-        localStorage.removeItem('token')
-        token.value = null
+  async function logout() {
+    try {
+      const response = await secureFetch(`${backend_url}/api/users/logout`, { method: 'POST' })
+      const data = await response.json()
+      removeUserDetails()
+      return response.ok
+        ? { status: true, message: data.message }
+        : { status: false, message: data.error || 'Logout failed' }
+    } catch {
+      removeUserDetails()
+      return { status: false, message: 'Unable to connect to the server' }
     }
+  }
 
-    function removeUserDetails(){
-        localStorage.removeItem('user_details')
-        localStorage.removeItem('userName')
-        user_details.value = null
-    }
-
-    function setUserDetails(user_dets){
-        localStorage.setItem('user_details',user_dets)
-    }
-    
-    async function logout(){
-        try{
-            const response = await fetch(`${backend_url}/api/users/logout`,{
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Authentication-Token': token.value
-                }
-            })
-            if (!response.ok){
-                const data = await response.json()
-                const rsp = {
-                    'status': false,
-                    'message': data.error
-                }
-                console.log(rsp);
-                return rsp
-            }
-            else{
-                const data = await response.json()
-                const rsp = {
-                    'status': true,
-                    'message': data.message
-                }
-                console.log("Logout Successfull", role)
-                removeToken()
-                removeUserDetails()
-                updateToken()
-                updateUser()
-                return rsp
-            }
-        }
-        catch(error){
-            console.error(error)
-            const rsp = {
-                'status': false,
-                'message': 'Oops! Something Went Wrong'
-            }
-            return rsp
-        }
-    }
-
-    async function login(user_details){
-        try{
-            const response = await fetch(`${backend_url}/api/users/login`,{
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                body: JSON.stringify(user_details)
-            })
-            console.log(response);
-            if (!response.ok){
-                const data = await response.json()
-                const rsp = {
-                    'status': false,
-                    'message': data.error
-                }
-                return rsp
-            }
-            else{
-                const data = await response.json()
-                console.log(data);
-                // if (data.user.auth_token){
-                //     setToken(data.user.auth_token)
-                //     const user_dets = {
-                //         'username':data.user.user_name,
-                //         'role':data.user.role,
-                //         'email':data.user.email,
-                //     }
-                //     console.log(user_dets);
-                //     setUserDetails(JSON.stringify(user_dets))
-                //     const rsp = {
-                //         'status': true,
-                //         'message': data.message
-                //     }
-                //     console.log(rsp);
-                //     updateToken()
-                //     updateUser()
-                //     return rsp
-                //}
-                const user_dets = {
-                    'user_id':data.user.user_id,
-                    'username':data.user.user_name,
-                    'role':data.user.role,
-                    'email':data.user.email,
-                }
-                role = data.user.role;
-
-                setUserDetails(JSON.stringify(user_dets))
-                localStorage.setItem('userName', data.user.user_name);
-
-                const rsp = {
-                    'status': true,
-                    'message': data.message,
-                    'username': data.user.user_name,
-                    'role': data.user.role
-                }
-                return rsp
-            }
-        }
-        catch(error){
-            console.error(error)
-            const rsp = {
-                'status': true,
-                'message': 'Oops! Something Went Wrong'
-            }
-            return rsp
-        }
-    }
-
-    async function register(user_details){
-        try{
-            const response = await fetch(`${backend_url}/api/create_user`,{
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                body: JSON.stringify(user_details)
-            })
-            if (!response.ok){
-                const data = await response.json()
-                const rsp = {
-                    'status': false,
-                    'message': data.error
-                }
-                return rsp
-            }
-            else{
-                const data = await response.json()
-                const rsp = {
-                    'status': true,
-                    'message': data.message
-                    
-                }
-                return rsp
-            }
-        }
-        catch(error){
-            console.error(error)
-            const rsp = {
-                'status': false,
-                'message': 'Oops! Something Went Wrong'
-            }
-            return rsp
-        }
-    }
-
-
-    return {login, logout, register ,token, username, isAuthenticated, backend_url, role,email, updateUser, user_details}
-});
+  return { login, logout, register, token, username, isAuthenticated, backend_url, role, email, updateUser, user_details }
+})

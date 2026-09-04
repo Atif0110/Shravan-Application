@@ -317,7 +317,6 @@ export default {
           throw new Error(response.data.error || 'Unknown error occurred')
         }
       } catch (error) {
-        console.error('Error sending message:', error)
         this.messages.push({
           role: 'assistant',
           content: 'Sorry, I encountered an error. Please try again.'

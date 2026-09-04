@@ -6,15 +6,14 @@ import requests
 import json
 import os
 from dotenv import load_dotenv
+from security import is_safe_external_url
 
 load_dotenv()
 
 def routes_doctors(app, db):
-    
-    # Initialize website scraper with Groq AI integration
+
     scraper = WebsiteScraper(api_key=os.environ.get("GROQ_API_KEY"))
-    
-    # Search for doctors, optionally filtering by specialization
+
     @app.route('/api/doctors/search', methods=['GET'])
     @swag_from("docs/search_doctors.yml")
     def search_doctors():
@@ -42,14 +41,13 @@ def routes_doctors(app, db):
 
         return jsonify({'doctors': doctor_list}), 200
 
-    # Get detailed information about a specific doctor
     @app.route('/api/doctors/<int:doctor_id>', methods=['GET'])
     def get_doctor_details(doctor_id):
         try:
             doctor = Doctors.query.get(doctor_id)
             if not doctor:
                 return jsonify({'error': 'Doctor not found'}), 404
-            
+
             doctor_details = {
                 'doctor_id': doctor.doctor_id,
                 'name': doctor.name,
@@ -71,22 +69,20 @@ def routes_doctors(app, db):
                     }
                 }
             }
-            
+
             return jsonify(doctor_details), 200
         except Exception as e:
             return jsonify({'error': f'Failed to fetch doctor details: {str(e)}'}), 500
 
-    # Get detailed hospital information
     @app.route('/api/hospitals/<int:hospital_id>', methods=['GET'])
     def get_hospital_details(hospital_id):
         try:
             hospital = Hospitals.query.get(hospital_id)
             if not hospital:
                 return jsonify({'error': 'Hospital not found'}), 404
-            
-            # Get all doctors in this hospital
+
             hospital_doctors = Doctors.query.filter_by(hospital_id=hospital_id).all()
-            
+
             hospital_details = {
                 'hospital_id': hospital.hospital_id,
                 'name': hospital.hospital_name,
@@ -110,37 +106,33 @@ def routes_doctors(app, db):
                 'total_doctors': len(hospital_doctors),
                 'specializations': list(set([d.specialization for d in hospital_doctors if d.specialization]))
             }
-            
+
             return jsonify(hospital_details), 200
         except Exception as e:
             return jsonify({'error': f'Failed to fetch hospital details: {str(e)}'}), 500
 
-    # Scrape doctor information from hospital website
     @app.route('/api/hospitals/<int:hospital_id>/scrape-doctors', methods=['POST'])
     def scrape_hospital_doctors(hospital_id):
         try:
             hospital = Hospitals.query.get(hospital_id)
             if not hospital:
                 return jsonify({'error': 'Hospital not found'}), 404
-            
+
             if not hospital.website:
                 return jsonify({'error': 'Hospital website not available'}), 400
-            
-            # Scrape doctor information from hospital website
+
             scraped_doctors = scraper.scrape_doctor_info(hospital.website)
-            
+
             if not scraped_doctors:
-                # Try to find doctor pages first
                 doctor_pages = scraper.find_doctor_page_links(hospital.website)
                 all_doctors = []
-                for page in doctor_pages[:5]:  # Limit to first 5 pages to avoid timeout
+                for page in doctor_pages[:5]:
                     page_doctors = scraper.scrape_doctor_info(page)
                     all_doctors.extend(page_doctors)
                 scraped_doctors = all_doctors
-            
-            # Also scrape hospital information
+
             hospital_info = scraper.scrape_hospital_info(hospital.website)
-            
+
             result = {
                 'hospital_id': hospital_id,
                 'hospital_name': hospital.hospital_name,
@@ -148,13 +140,12 @@ def routes_doctors(app, db):
                 'hospital_info': hospital_info,
                 'total_scraped': len(scraped_doctors)
             }
-            
+
             return jsonify(result), 200
-            
+
         except Exception as e:
             return jsonify({'error': f'Failed to scrape doctors: {str(e)}'}), 500
 
-    # Find doctors by specialization using web scraping
     @app.route('/api/doctors/find-by-specialization', methods=['POST'])
     @swag_from("docs/find_doctors_by_specialization.yml")
     def find_doctors_by_specialization():
@@ -162,19 +153,19 @@ def routes_doctors(app, db):
             data = request.get_json()
             specialization = data.get('specialization', '').strip()
             hospital_website = data.get('hospital_website', '').strip()
-            
+
             if not specialization:
                 return jsonify({'error': 'Specialization is required'}), 400
-            
+
             if not hospital_website:
                 return jsonify({'error': 'Hospital website URL is required'}), 400
-            
-            # Find doctors with the specified specialization
+            if not is_safe_external_url(hospital_website):
+                return jsonify({'error': 'Only public HTTP(S) websites are allowed'}), 400
+
             specialized_doctors = scraper.find_doctors_by_specialization(hospital_website, specialization)
-            
-            # Also get hospital information
+
             hospital_info = scraper.scrape_hospital_info(hospital_website)
-            
+
             result = {
                 'specialization': specialization,
                 'hospital_website': hospital_website,
@@ -182,42 +173,40 @@ def routes_doctors(app, db):
                 'doctors': specialized_doctors,
                 'total_found': len(specialized_doctors)
             }
-            
+
             return jsonify(result), 200
-            
+
         except Exception as e:
             return jsonify({'error': f'Failed to find doctors: {str(e)}'}), 500
 
-    # Get hospital departments using web scraping
     @app.route('/api/hospitals/departments', methods=['POST'])
     @swag_from("docs/get_hospital_departments.yml")
     def get_hospital_departments():
         try:
             data = request.get_json()
             hospital_website = data.get('hospital_website', '').strip()
-            
+
             if not hospital_website:
                 return jsonify({'error': 'Hospital website URL is required'}), 400
-            
-            # Get hospital departments
+            if not is_safe_external_url(hospital_website):
+                return jsonify({'error': 'Only public HTTP(S) websites are allowed'}), 400
+
             departments = scraper.get_hospital_departments(hospital_website)
-            
-            # Get hospital basic info
+
             hospital_info = scraper.scrape_hospital_info(hospital_website)
-            
+
             result = {
                 'hospital_website': hospital_website,
                 'hospital_info': hospital_info,
                 'departments': departments,
                 'total_departments': len(departments)
             }
-            
+
             return jsonify(result), 200
-            
+
         except Exception as e:
             return jsonify({'error': f'Failed to get departments: {str(e)}'}), 500
 
-    # Enhanced search with hospital information
     @app.route('/api/doctors/enhanced-search', methods=['GET'])
     @swag_from("docs/enhanced_doctor_search.yml")
     def enhanced_doctor_search():
@@ -227,20 +216,20 @@ def routes_doctors(app, db):
             hospital_type = request.args.get('hospital_type', '').strip()
             min_rating = request.args.get('min_rating', type=float)
             max_distance = request.args.get('max_distance', type=float)
-            
+
             query = db.session.query(Doctors).join(Hospitals)
-            
+
             if specialization:
                 query = query.filter(Doctors.specialization.ilike(f'%{specialization}%'))
-            
+
             if hospital_type:
                 query = query.filter(Hospitals.type.ilike(f'%{hospital_type}%'))
-            
+
             if min_rating:
                 query = query.filter(Doctors.rating >= min_rating)
-            
+
             doctors = query.all()
-            
+
             enhanced_doctor_list = []
             for doctor in doctors:
                 doctor_data = {
@@ -265,7 +254,7 @@ def routes_doctors(app, db):
                     }
                 }
                 enhanced_doctor_list.append(doctor_data)
-            
+
             return jsonify({
                 'doctors': enhanced_doctor_list,
                 'total_results': len(enhanced_doctor_list),
@@ -276,11 +265,10 @@ def routes_doctors(app, db):
                     'min_rating': min_rating
                 }
             }), 200
-            
+
         except Exception as e:
             return jsonify({'error': f'Search failed: {str(e)}'}), 500
-            
-    # AI-powered doctor and hospital extraction
+
     @app.route('/api/hospitals/ai-extract', methods=['POST'])
     @swag_from("docs/ai_extract_hospital.yml")
     def ai_extract_hospital_info():
@@ -290,18 +278,19 @@ def routes_doctors(app, db):
             hospital_website = data.get('hospital_website', '').strip()
             extract_doctors = data.get('extract_doctors', True)
             specialization_filter = data.get('specialization', '')
-            
+
             if not hospital_website:
                 return jsonify({'error': 'Hospital website URL is required'}), 400
-            
-            # Fetch the HTML content
+            if not is_safe_external_url(hospital_website):
+                return jsonify({'error': 'Only public HTTP(S) websites are allowed'}), 400
+
             try:
                 response = requests.get(hospital_website, headers=scraper.headers, timeout=15)
                 response.raise_for_status()
                 html_content = response.text
             except Exception as e:
                 return jsonify({'error': f'Failed to fetch website: {str(e)}'}), 400
-            
+
             result = {
                 'hospital_website': hospital_website,
                 'extraction_method': 'groq_ai' if scraper.groq_client else 'traditional',
@@ -309,28 +298,25 @@ def routes_doctors(app, db):
                 'doctors': [],
                 'total_doctors': 0
             }
-            
-            # Extract hospital information using Groq AI
+
             if scraper.groq_client:
                 hospital_info = scraper.extract_hospital_info_with_groq(html_content)
                 result['hospital_info'] = hospital_info
-                
-                # Extract doctors if requested
+
                 if extract_doctors:
                     doctors = scraper.extract_doctors_with_groq(html_content, specialization_filter)
                     result['doctors'] = doctors
                     result['total_doctors'] = len(doctors)
             else:
-                # Fallback to traditional methods
                 hospital_info = scraper._fallback_extract_hospital_info(html_content)
                 result['hospital_info'] = hospital_info
-                
+
                 if extract_doctors:
                     doctors = scraper._fallback_extract_doctors(html_content, specialization_filter)
                     result['doctors'] = doctors
                     result['total_doctors'] = len(doctors)
-            
+
             return jsonify(result), 200
-            
+
         except Exception as e:
             return jsonify({'error': f'AI extraction failed: {str(e)}'}), 500

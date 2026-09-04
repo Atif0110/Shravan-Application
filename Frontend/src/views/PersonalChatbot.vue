@@ -10,16 +10,23 @@
           </div>
         </div>
         <div class="header-controls">
-          <button 
-            @click="showModal = true" 
-            class="persona-button" 
+          <button
+            @click="showModal = true"
+            class="persona-button"
             title="Update AI Persona"
           >
             <span class="material-icons">person</span>
           </button>
-          <button 
-            @click="clearChatHistory" 
-            class="clear-button" 
+          <button
+            @click="toggleSpeech"
+            class="clear-button"
+            :title="speechEnabled ? 'Turn off voice replies' : 'Turn on voice replies'"
+          >
+            <span class="material-icons">{{ speechEnabled ? 'volume_up' : 'volume_off' }}</span>
+          </button>
+          <button
+            @click="clearChatHistory"
+            class="clear-button"
             title="Clear chat history"
           >
             <span class="material-icons">refresh</span>
@@ -42,12 +49,12 @@
           <h3>Ready to Chat!</h3>
           <p>Your AI persona {{ currentPersonaName }} is ready. Start the conversation below.</p>
         </div>
-        
-        <div v-for="(msg, index) in messages" :key="index" 
+
+        <div v-for="(msg, index) in messages" :key="index"
              :class="['message-bubble', msg.sender]">
           <div class="message-content">
-            <div v-if="msg.sender === 'bot'" 
-                 class="markdown-content" 
+            <div v-if="msg.sender === 'bot'"
+                 class="markdown-content"
                  v-html="parseMarkdown(msg.text)">
             </div>
             <p v-else>{{ msg.text }}</p>
@@ -77,9 +84,9 @@
             @keydown.enter.prevent="sendMessage"
             ref="inputField"
           />
-          <button 
-            type="button" 
-            @click="startListening" 
+          <button
+            type="button"
+            @click="startListening"
             :disabled="!supportsSpeech || isProcessing || !isPersonaConfigured"
             class="voice-btn"
             :class="{ 'listening': isListening }"
@@ -87,8 +94,8 @@
           >
             <span class="material-icons">{{ isListening ? 'mic' : 'mic_none' }}</span>
           </button>
-          <button 
-            type="button" 
+          <button
+            type="button"
             class="send-btn"
             :disabled="!userInput.trim() || isProcessing || !isPersonaConfigured"
             @click="sendMessage"
@@ -97,6 +104,7 @@
             <span class="material-icons">send</span>
           </button>
         </form>
+        <p v-if="voiceNotice" class="voice-notice">{{ voiceNotice }}</p>
         <p v-if="!isPersonaConfigured" class="input-hint">
           Configure your AI persona to start chatting
         </p>
@@ -129,11 +137,11 @@
             <!-- Age -->
             <div class="form-group">
               <label>Age</label>
-              <input 
-                v-model="persona.age" 
-                type="number" 
-                min="1" 
-                max="120" 
+              <input
+                v-model="persona.age"
+                type="number"
+                min="1"
+                max="120"
                 placeholder="Enter age"
                 required
               >
@@ -142,9 +150,9 @@
             <!-- Profession -->
             <div class="form-group">
               <label>Profession</label>
-              <input 
-                v-model="persona.profession" 
-                type="text" 
+              <input
+                v-model="persona.profession"
+                type="text"
                 placeholder="e.g., Software Engineer, Doctor, Teacher"
                 required
               >
@@ -179,18 +187,18 @@
             <div class="form-group">
               <label>Expertise Areas</label>
               <div class="expertise-input">
-                <input 
-                  v-model="newExpertise" 
-                  @keyup.enter="addExpertise" 
-                  type="text" 
+                <input
+                  v-model="newExpertise"
+                  @keyup.enter="addExpertise"
+                  type="text"
                   placeholder="Add expertise area and press Enter"
                 >
                 <button type="button" @click="addExpertise" class="add-btn">Add</button>
               </div>
               <div class="expertise-tags">
-                <span 
-                  v-for="(area, index) in persona.expertise_areas" 
-                  :key="index" 
+                <span
+                  v-for="(area, index) in persona.expertise_areas"
+                  :key="index"
                   class="expertise-tag"
                 >
                   {{ area }}
@@ -256,10 +264,16 @@ const persona = ref<PersonaConfig>({
 let recognition: any = null;
 let speechBuffer = '';
 
+// Voice replies can be switched off by seniors who find sudden audio
+// startling -- the choice is remembered for next time.
+const speechEnabled = ref(localStorage.getItem('shravan_tts_enabled') !== 'off');
+// Short, friendly status/error line shown just above the input box.
+const voiceNotice = ref('');
+
 const isPersonaConfigured = computed(() => {
-  return persona.value.gender && 
-         persona.value.age && 
-         persona.value.profession && 
+  return persona.value.gender &&
+         persona.value.age &&
+         persona.value.profession &&
          persona.value.personality_type;
 });
 
@@ -269,15 +283,12 @@ const personaDescription = computed(() => {
 });
 
 onMounted(() => {
-  console.log("=== CHATBOT COMPONENT MOUNTED ===");
-  console.log("Auth store:", authStore);
-  console.log("Backend URL:", authStore.backend_url);
-  
+
   // Reset chat history for new session
   // Initialize with a welcome message
   if (isPersonaConfigured.value) {
-    messages.value.push({ 
-      text: `Hello! I'm ${currentPersonaName.value}, your personalized AI assistant. How can I help you today?`, 
+    messages.value.push({
+      text: `Hello! I'm ${currentPersonaName.value}, your personalized AI assistant. How can I help you today?`,
       sender: 'bot',
       time: getCurrentTime()
     });
@@ -285,11 +296,11 @@ onMounted(() => {
 
   scrollToBottom();
   document.body.classList.toggle('dark-mode', isDarkMode.value);
-  
+
   // Initialize speech recognition
   const SpeechRecognitionClass =
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
+
   if (SpeechRecognitionClass) {
     supportsSpeech.value = true;
     recognition = new SpeechRecognitionClass();
@@ -302,6 +313,9 @@ onMounted(() => {
     recognition.onstart = () => {
       isListening.value = true;
       speechBuffer = '';
+      // If the assistant was still talking from the last answer, cut it
+      // short -- nobody likes being talked over.
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     };
 
     recognition.onend = () => {
@@ -329,10 +343,23 @@ onMounted(() => {
       }
       userInput.value = (speechBuffer + interimTranscript).trim();
     };
-    
-    recognition.onerror = () => {
+
+    recognition.onerror = (event: any) => {
       isListening.value = false;
+      const code = event && event.error;
+      if (code === 'no-speech') {
+        voiceNotice.value = "I didn't hear anything. Tap the mic and try again.";
+      } else if (code === 'not-allowed' || code === 'service-not-allowed') {
+        voiceNotice.value = 'Microphone access is blocked. Allow it in your browser settings, then try again.';
+        supportsSpeech.value = false;
+      } else if (code === 'network') {
+        voiceNotice.value = 'The voice service lost its connection. Check your internet and tap the mic again.';
+      } else {
+        voiceNotice.value = 'Voice input did not work this time. Please try again or type instead.';
+      }
       speechBuffer = '';
+      // Let the message fade naturally instead of leaving it on screen forever.
+      window.setTimeout(() => { voiceNotice.value = ''; }, 6000);
     };
   }
 });
@@ -349,18 +376,12 @@ const getCurrentTime = () => {
 };
 
 const sendMessage = async () => {
-  console.log("=== SEND MESSAGE FUNCTION CALLED ===");
-  console.log("User input:", userInput.value);
-  console.log("User input trimmed:", userInput.value?.trim());
-  console.log("Is processing:", isProcessing.value);
-  
+
   if (!userInput.value?.trim() || isProcessing.value || !isPersonaConfigured.value) {
-    console.log("Early return - empty input or processing");
     return;
   }
 
   const messageText = userInput.value;
-  console.log("Message text:", messageText);
   userInput.value = '';
   isProcessing.value = true;
 
@@ -375,7 +396,7 @@ const sendMessage = async () => {
     // Prepare the request payload
     const payload = {
       question: messageText,
-      history: messages.value.slice(0, -1).map(msg => ({
+      history: messages.value.slice(Math.max(0, messages.value.length - 11), -1).map(msg => ({
         role: msg.sender === 'user' ? 'user' : 'assistant',
         content: msg.text
       })),
@@ -386,9 +407,7 @@ const sendMessage = async () => {
       communication_style: persona.value.communication_style,
       expertise_areas: persona.value.expertise_areas
     };
-    console.log('Sending payload:', payload);
-    console.log('Backend URL:', authStore.backend_url);
-    
+
     // Make API call to backend
     const response = await axios.post(`${authStore.backend_url}/api/personal-chatbot`, payload, {
       headers: {
@@ -396,32 +415,33 @@ const sendMessage = async () => {
       }
     });
 
-    console.log('Response received:', response);
 
     if (response.status === 200 && response.data.response) {
       const botResponse = response.data.response;
-      
+
       // Update persona name if provided
       if (response.data.persona_name) {
         currentPersonaName.value = response.data.persona_name;
       }
-      
+
       // Add bot message
       messages.value.push({
         text: botResponse,
         sender: 'bot',
         time: getCurrentTime()
       });
+
+      // Read the answer aloud (if the speaker toggle is on).
+      speakReply(botResponse);
     } else {
       throw new Error('Invalid response from server');
     }
 
     isProcessing.value = false;
   } catch (error) {
-    console.error('Error sending message:', error);
-    
+
     let errorMessage = "Sorry, I couldn't process your request. Please try again.";
-    
+
     // Handle specific error cases
     if (axios.isAxiosError(error)) {
       if (error.response?.status === 400) {
@@ -440,7 +460,7 @@ const sendMessage = async () => {
       sender: 'bot',
       time: getCurrentTime()
     });
-    
+
     isProcessing.value = false;
   }
 };
@@ -458,13 +478,13 @@ const removeExpertise = (index: number) => {
 
 const updatePersona = () => {
   showModal.value = false;
-  
+
   // Clear existing messages and add welcome message
   messages.value = [];
   setTimeout(() => {
     if (currentPersonaName.value) {
-      messages.value.push({ 
-        text: `Hello! I'm ${currentPersonaName.value}, your personalized AI assistant. My persona has been updated. How can I help you today?`, 
+      messages.value.push({
+        text: `Hello! I'm ${currentPersonaName.value}, your personalized AI assistant. My persona has been updated. How can I help you today?`,
         sender: 'bot',
         time: getCurrentTime()
       });
@@ -476,11 +496,49 @@ const closeModal = () => {
   showModal.value = false;
 };
 
+// Turn the assistant's spoken replies on or off.
+const toggleSpeech = () => {
+  speechEnabled.value = !speechEnabled.value;
+  localStorage.setItem('shravan_tts_enabled', speechEnabled.value ? 'on' : 'off');
+  if (!speechEnabled.value && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+};
+
+// Read a bot reply out loud. Strips markdown symbols so the voice
+// doesn't stumble over asterisks and backticks.
+const speakReply = (text: string) => {
+  if (!speechEnabled.value || !('speechSynthesis' in window)) return;
+  const plain = String(text).replace(/[#*`>_\[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!plain) return;
+  const utterance = new SpeechSynthesisUtterance(plain.slice(0, 400));
+  const voices = window.speechSynthesis.getVoices();
+  utterance.voice =
+    voices.find(v => v.lang.startsWith('en-IN')) ||
+    voices.find(v => v.lang.startsWith('en')) ||
+    null;
+  utterance.rate = 0.95; // a touch slower suits older listeners
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+};
+
 const startListening = () => {
-  if (recognition && !isListening.value) {
+  if (!recognition) {
+    voiceNotice.value = "Voice input isn't supported in this browser, but you can still type your question.";
+    return;
+  }
+  // The recognition object ends up in a broken state after some errors,
+  // and calling start() on it then throws. Stopping it first resets it.
+  try {
+    if (isListening.value) {
+      recognition.stop();
+      return;
+    }
     recognition.start();
-  } else if (recognition && isListening.value) {
-    recognition.stop();
+  } catch (err) {
+    if (err && (err as any).name === 'InvalidStateError') {
+      recognition.stop();
+    }
   }
 };
 
@@ -495,8 +553,8 @@ const clearChatHistory = () => {
   // Add welcome message after clearing if persona is configured
   if (isPersonaConfigured.value) {
     setTimeout(() => {
-      messages.value.push({ 
-        text: `Hello! I'm ${currentPersonaName.value || 'your AI assistant'}. How can I help you today?`, 
+      messages.value.push({
+        text: `Hello! I'm ${currentPersonaName.value || 'your AI assistant'}. How can I help you today?`,
         sender: 'bot',
         time: getCurrentTime()
       });
@@ -506,15 +564,15 @@ const clearChatHistory = () => {
 
 const parseMarkdown = (text: string): string => {
   if (!text) return '';
-  
+
   let lines = text.split('\n');
   let html = '';
   let inList = false;
   let listItems: string[] = [];
-  
+
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].trim();
-    
+
     if (line.startsWith('### ')) {
       if (inList) {
         html += '<ul class="markdown-list">' + listItems.map(item => `<li class="markdown-item">${item}</li>`).join('') + '</ul>';
@@ -557,11 +615,11 @@ const parseMarkdown = (text: string): string => {
         listItems = [];
         inList = false;
       }
-      
+
       line = line.replace(/\*\*(.*?)\*\*/g, '<strong class="markdown-bold">$1</strong>');
       line = line.replace(/\*(.*?)\*/g, '<em class="markdown-italic">$1</em>');
       line = line.replace(/`(.*?)`/g, '<code class="markdown-code">$1</code>');
-      
+
       html += `<p class="markdown-paragraph">${line}</p>`;
     }
     else {
@@ -575,13 +633,13 @@ const parseMarkdown = (text: string): string => {
       }
     }
   }
-  
+
   if (inList) {
     html += '<ul class="markdown-list">' + listItems.map(item => `<li class="markdown-item">${item}</li>`).join('') + '</ul>';
   }
-  
+
   html = html.replace(/```([\s\S]*?)```/g, '<pre class="markdown-pre"><code class="markdown-code-block">$1</code></pre>');
-  
+
   return html;
 };
 </script>
@@ -1023,8 +1081,8 @@ const parseMarkdown = (text: string): string => {
 
 /* Markdown headers with explicit colors */
 .markdown-content .markdown-header,
-.markdown-content h1, 
-.markdown-content h2, 
+.markdown-content h1,
+.markdown-content h2,
 .markdown-content h3 {
   margin: 12px 0 6px 0;
   color: #1f2937 !important;
@@ -1039,16 +1097,16 @@ const parseMarkdown = (text: string): string => {
 }
 
 .markdown-content h1,
-.markdown-content .markdown-header:first-child { 
-  font-size: 1.3em; 
+.markdown-content .markdown-header:first-child {
+  font-size: 1.3em;
 }
 
-.markdown-content h2 { 
-  font-size: 1.2em; 
+.markdown-content h2 {
+  font-size: 1.2em;
 }
 
-.markdown-content h3 { 
-  font-size: 1.1em; 
+.markdown-content h3 {
+  font-size: 1.1em;
 }
 
 /* Markdown paragraphs with explicit colors */
@@ -1203,35 +1261,35 @@ const parseMarkdown = (text: string): string => {
   .chatbot-page {
     padding: 10px;
   }
-  
+
   .chatbot-container {
     max-width: 100%;
     border-radius: 12px;
   }
-  
+
   .chat-header {
     padding: 15px;
     min-height: 70px;
   }
-  
+
   .chat-avatar {
     width: 40px;
     height: 40px;
   }
-  
+
   .chat-info h2 {
     font-size: 1.1rem;
   }
-  
+
   .chat-messages {
     padding: 15px;
     min-height: 300px;
   }
-  
+
   .suggested-prompts {
     max-width: 300px;
   }
-  
+
   .suggested-prompt {
     font-size: 0.85rem;
     padding: 10px 16px;
@@ -1242,37 +1300,37 @@ const parseMarkdown = (text: string): string => {
   .chatbot-page {
     padding: 5px;
   }
-  
+
   .chat-header {
     padding: 12px;
   }
-  
+
   .chat-info h2 {
     font-size: 1rem;
   }
-  
+
   .chat-info p {
     font-size: 0.8rem;
   }
-  
+
   .chat-messages {
     padding: 12px;
     gap: 10px;
   }
-  
+
   .message-bubble {
     max-width: 85%;
     padding: 10px 15px;
   }
-  
+
   .chat-input {
     padding: 15px;
   }
-  
+
   .input-form {
     padding: 4px 12px;
   }
-  
+
   .voice-btn, .send-btn {
     width: 36px;
     height: 36px;
@@ -1595,18 +1653,29 @@ const parseMarkdown = (text: string): string => {
   .modal-overlay {
     padding: 10px;
   }
-  
+
   .modal-container {
     max-width: 100%;
   }
-  
+
   .modal-header,
   .modal-body {
     padding: 16px;
   }
-  
+
   .form-actions {
     flex-direction: column;
   }
+}
+.voice-notice {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  text-align: center;
+  color: #8a5a00;
+  line-height: 1.4;
+}
+
+.dark-mode .voice-notice {
+  color: #f0c674;
 }
 </style>

@@ -1,7 +1,10 @@
-from flask import request, jsonify, session
-from models import db, Reminders, Medicines, MedicineLogs
+import os
+import uuid
+from flask import request, jsonify, session, send_from_directory
+from models import db, Reminders, Medicines, MedicineLogs, VoiceReminder
 from datetime import datetime, date
 from flasgger.utils import swag_from
+from werkzeug.utils import secure_filename
 
 def routes_reminders(app, db):
     """
@@ -24,12 +27,10 @@ def routes_reminders(app, db):
             return jsonify({'error': 'Missing required fields (medicine_name, time_of_day, frequency)', 'status': 'fail'}), 400
 
         try:
-            # Find an existing medicine or create a new one to avoid duplicates
-            medicine = Medicines.query.filter_by(name=data['medicine_name']).first()
+            medicine = Medicines.query.filter_by(user_id=user_id, name=data['medicine_name']).first()
             if not medicine:
-                medicine = Medicines(name=data['medicine_name'], dosage=data.get('dosage'))
+                medicine = Medicines(user_id=user_id, name=str(data['medicine_name']).strip()[:200], dosage=str(data.get('dosage') or '').strip()[:100] or None)
                 db.session.add(medicine)
-                # Commit here to get a medicine_id for the new reminder
                 db.session.commit()
 
             new_reminder = Reminders(
@@ -41,10 +42,10 @@ def routes_reminders(app, db):
                 notification_type=data.get('notification_type', 'sms'),
                 is_active=data.get('is_active', True)
             )
-            
+
             db.session.add(new_reminder)
             db.session.commit()
-            
+
             return jsonify({
                 'message': 'Reminder created successfully',
                 'status': 'success',
@@ -68,11 +69,6 @@ def routes_reminders(app, db):
         try:
             reminders = Reminders.query.filter_by(user_id=user_id).order_by(Reminders.time_of_day).all()
 
-            # Pull today's logs once up front instead of querying per-reminder,
-            # then look status up per reminder_id below. This is what lets the
-            # "taken" state survive a page refresh or a trip back to the home
-            # screen -- the status now lives in the database, not just in the
-            # component's local state.
             today = date.today()
             todays_logs = MedicineLogs.query.filter(
                 MedicineLogs.reminder_id.in_([r.reminder_id for r in reminders]),
@@ -80,7 +76,6 @@ def routes_reminders(app, db):
             ).all()
             latest_status_by_reminder = {}
             for log in todays_logs:
-                # if a reminder was logged more than once today, keep the latest
                 latest_status_by_reminder[log.reminder_id] = log.status
 
             reminders_list = []
@@ -96,10 +91,10 @@ def routes_reminders(app, db):
                     'today_status': latest_status_by_reminder.get(r.reminder_id, 'pending')
                 })
             return jsonify({'status': 'success', 'reminders': reminders_list}), 200
-        
+
         except Exception as e:
             return jsonify({'error': f'Error fetching reminders: {str(e)}', 'status': 'fail'}), 500
-            
+
     @app.route('/api/reminders/<int:reminder_id>', methods=['GET'])
     @swag_from("docs/get_reminder_by_id.yml")
     def get_reminder_by_id(reminder_id):
@@ -109,13 +104,13 @@ def routes_reminders(app, db):
         user_id = session.get('user_id')
         if not user_id:
             return jsonify({'error': 'Not authenticated', 'status': 'fail'}), 401
-            
+
         try:
             reminder = Reminders.query.filter_by(reminder_id=reminder_id, user_id=user_id).first()
-            
+
             if not reminder:
                 return jsonify({'error': 'Reminder not found or access denied', 'status': 'fail'}), 404
-                
+
             return jsonify({
                 'status': 'success',
                 'reminder': {
@@ -128,7 +123,7 @@ def routes_reminders(app, db):
                     'is_active': reminder.is_active
                 }
             }), 200
-            
+
         except Exception as e:
             return jsonify({'error': f'Error fetching reminder: {str(e)}', 'status': 'fail'}), 500
 
@@ -143,7 +138,6 @@ def routes_reminders(app, db):
             return jsonify({'error': 'Not authenticated', 'status': 'fail'}), 401
 
         try:
-            # Find the reminder and ensure it belongs to the logged-in user
             reminder = Reminders.query.filter_by(reminder_id=reminder_id, user_id=user_id).first()
 
             if not reminder:
@@ -151,15 +145,14 @@ def routes_reminders(app, db):
 
             data = request.get_json()
 
-            # Update fields if they exist in the request body
             if 'medicine_name' in data:
-                medicine = Medicines.query.filter_by(name=data['medicine_name']).first()
+                medicine = Medicines.query.filter_by(user_id=user_id, name=data['medicine_name']).first()
                 if not medicine:
-                    medicine = Medicines(name=data['medicine_name'], dosage=data.get('dosage'))
+                    medicine = Medicines(user_id=user_id, name=str(data['medicine_name']).strip()[:200], dosage=str(data.get('dosage') or '').strip()[:100] or None)
                     db.session.add(medicine)
                     db.session.commit()
                 reminder.medicine_id = medicine.medicine_id
-            
+
             if 'time_of_day' in data:
                 reminder.time_of_day = data['time_of_day']
             if 'frequency' in data:
@@ -190,15 +183,12 @@ def routes_reminders(app, db):
             return jsonify({'error': 'Not authenticated', 'status': 'fail'}), 401
 
         try:
-            # Find the reminder and ensure it belongs to the logged-in user
             reminder = Reminders.query.filter_by(reminder_id=reminder_id, user_id=user_id).first()
 
             if not reminder:
                 return jsonify({'error': 'Reminder not found or access denied', 'status': 'fail'}), 404
 
-            # Before deleting the reminder, consider if you need to delete related logs
-            # For example: MedicineLogs.query.filter_by(reminder_id=reminder_id).delete()
-            
+
             db.session.delete(reminder)
             db.session.commit()
 
@@ -207,3 +197,57 @@ def routes_reminders(app, db):
         except Exception as e:
             db.session.rollback()
             return jsonify({'error': f'Error deleting reminder: {str(e)}', 'status': 'fail'}), 500
+
+    VOICE_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads', 'voice_reminders')
+    os.makedirs(VOICE_UPLOAD_DIR, exist_ok=True)
+
+    @app.route('/api/voice-reminders', methods=['POST'])
+    def create_voice_reminder():
+        user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'Not authenticated', 'status': 'fail'}), 401
+
+        title = (request.form.get('title') or 'Voice reminder').strip()[:200]
+        audio = request.files.get('audio')
+        if not audio:
+            return jsonify({'error': 'An audio file is required', 'status': 'fail'}), 400
+        allowed_extensions = {'.m4a', '.mp3', '.wav', '.webm', '.ogg', '.aac'}
+        original_name = secure_filename(audio.filename or '')
+        ext = os.path.splitext(original_name)[1].lower() or '.m4a'
+        if ext not in allowed_extensions:
+            return jsonify({'error': 'Unsupported audio format', 'status': 'fail'}), 400
+
+        try:
+            stored_name = f"{user_id}_{uuid.uuid4().hex[:12]}{ext}"
+            audio.save(os.path.join(VOICE_UPLOAD_DIR, stored_name))
+
+            reminder = VoiceReminder(
+                user_id=user_id,
+                title=title,
+                audio_url=f"/api/voice-reminders/audio/{stored_name}"
+            )
+            db.session.add(reminder)
+            db.session.commit()
+            return jsonify(reminder.to_dict()), 201
+        except Exception as exc:
+            db.session.rollback()
+            return jsonify({'error': f'Could not save voice reminder: {str(exc)}', 'status': 'fail'}), 500
+
+    @app.route('/api/voice-reminders', methods=['GET'])
+    def get_voice_reminders():
+        user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'Not authenticated', 'status': 'fail'}), 401
+        reminders = (VoiceReminder.query.filter_by(user_id=user_id)
+                     .order_by(VoiceReminder.created_at.desc()).all())
+        return jsonify([r.to_dict() for r in reminders]), 200
+
+    @app.route('/api/voice-reminders/audio/<path:filename>', methods=['GET'])
+    def serve_voice_reminder_audio(filename):
+        reminder = VoiceReminder.query.filter_by(
+            user_id=session.get('user_id'),
+            audio_url=f'/api/voice-reminders/audio/{filename}',
+        ).first()
+        if not reminder:
+            return jsonify({'error': 'Audio reminder not found', 'status': 'fail'}), 404
+        return send_from_directory(VOICE_UPLOAD_DIR, filename)

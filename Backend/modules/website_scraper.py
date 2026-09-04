@@ -13,15 +13,18 @@ from selenium.webdriver.support import expected_conditions as EC
 from urllib.parse import urljoin, urlparse
 import re
 from collections import deque
+from security import is_safe_external_url
 
 load_dotenv()
 
 class WebsiteScraper:
     def __init__(self, api_key=None):
         self.api_key = api_key
-        self.client = Groq(api_key=self.api_key)
+        self.client = Groq(api_key=self.api_key) if self.api_key else None
 
     def get_rendered_html(self, url):
+        if not is_safe_external_url(url):
+            raise ValueError("Only public HTTP(S) URLs are allowed")
         chrome_options = Options()
         chrome_options.add_argument("--headless=chrome")
         chrome_options.add_argument("--no-sandbox")
@@ -42,7 +45,17 @@ class WebsiteScraper:
             "goog:loggingPrefs", {"performance": "ALL"}
         )
 
-        driver = webdriver.Chrome(options=chrome_options)
+        # Prefer webdriver-manager so a matching driver is fetched
+        # automatically instead of relying on a committed binary that goes
+        # stale with every Chrome update.
+        try:
+            from webdriver_manager.chrome import ChromeDriverManager
+            driver = webdriver.Chrome(
+                service=Service(ChromeDriverManager().install()),
+                options=chrome_options
+            )
+        except Exception:
+            driver = webdriver.Chrome(options=chrome_options)
 
         try:
             driver.execute_cdp_cmd("Network.enable", {})
@@ -98,6 +111,9 @@ class WebsiteScraper:
         """
         Enhanced method to crawl multiple pages and find doctor-related URLs with robust keyword matching
         """
+        if not is_safe_external_url(homepage_url):
+            return []
+
         visited_urls = set()
         all_found_urls = set()
         urls_to_visit = deque([homepage_url])

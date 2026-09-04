@@ -13,7 +13,6 @@ onMounted(() => {
       const userDetails = JSON.parse(auth_store.user_details);
       username.value = userDetails.username || 'Health Worker';
     } catch (e) {
-      console.error('Error parsing user details:', e);
     }
   }
 });

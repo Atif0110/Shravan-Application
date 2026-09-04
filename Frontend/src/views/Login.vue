@@ -20,9 +20,7 @@ async function onSubmit() {
 
   auth_store.login(data).then((resp) => {
   message_store.setmessage(resp.message);
-  // console.log(auth_store)
   // const role = auth_store.role;
-  // console.log(role);
   if (resp.status && resp.role === 'user') {
     router.push({ path: '/userdashboard' });
   } else if (resp.status && resp.role === 'caretaker') {

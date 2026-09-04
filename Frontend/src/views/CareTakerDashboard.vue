@@ -15,7 +15,6 @@ onMounted(() => {
       const userDetails = JSON.parse(auth_store.user_details);
       username.value = userDetails.username || 'Caretaker';
     } catch (e) {
-      console.error('Error parsing user details:', e);
     }
   }
 });
@@ -31,7 +30,6 @@ function logout() {
 
 // function handleSearch() {
 
-//   console.log('Searching for:', searchQuery.value);
 // }
 </script>
 

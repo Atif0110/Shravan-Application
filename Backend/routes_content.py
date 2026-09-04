@@ -78,7 +78,7 @@ def routes_content(app, db):
         query = YogaVideos.query
         if difficulty:
             query = query.filter_by(difficulty=difficulty)
-        
+
         videos = query.all()
         video_list = [{
             'id': v.video_id,
@@ -90,16 +90,20 @@ def routes_content(app, db):
         } for v in videos]
 
         return jsonify({'videos': video_list}), 200
-    
+
     @app.route('/api/yoga-videos', methods=['POST'])
     @swag_from("docs/post_yoga_video.yml")
     def create_yoga_video():
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
+        title = str(data.get('title') or '').strip()
+        video_url = str(data.get('video_url') or '').strip()
+        if not title or not video_url or len(title) > 255:
+            return jsonify({'error': 'title and video_url are required', 'status': 'fail'}), 400
         video = YogaVideos(
-            title=data.get('title'),
-            description=data.get('description'),
-            video_url=data.get('video_url'),
-            difficulty=data.get('difficulty'),
+            title=title,
+            description=str(data.get('description') or '').strip()[:5000] or None,
+            video_url=video_url[:1000],
+            difficulty=str(data.get('difficulty') or '').strip()[:50] or None,
             duration_minutes=data.get('duration')
         )
         db.session.add(video)

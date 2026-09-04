@@ -5,7 +5,6 @@ export const messageStore = defineStore('messageStore',()=>{
     const flash_message = ref('')
 
     function setmessage(message){
-        console.log(message);
         flash_message.value = message
         setTimeout(()=>{flash_message.value=''},3000)
     }

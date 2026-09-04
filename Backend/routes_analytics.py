@@ -15,13 +15,9 @@ def routes_analytics(app, db):
             user = User.query.get(session['user_id'])
             if not user:
                 return jsonify({'error': 'User not found.', 'status': 'fail'}), 404
-            
-            # Health Trends is the NGO / health-center dashboard feature --
-            # the role seeded for that signup path is 'ngo', not 'clinic'.
-            # Checking for a role that no account could ever have was why
-            # every NGO user hit a 403 here.
+
             is_clinic_user = user.role is not None and user.role.name == 'ngo'
-            
+
             if not is_clinic_user:
                 return jsonify({'error': 'Forbidden. You do not have permission to access this resource.', 'status': 'fail'}), 403
 
@@ -35,9 +31,9 @@ def routes_analytics(app, db):
             ).filter_by(pincode=pincode).group_by(SymptomLogs.symptom_term).order_by(func.count(SymptomLogs.symptom_term).desc()).all()
 
             trend_data = [{'symptom': term, 'count': count} for term, count in trends]
-            
+
             return jsonify({
-                'pincode': pincode, 
+                'pincode': pincode,
                 'trends': trend_data,
                 'status': 'success'
             }), 200

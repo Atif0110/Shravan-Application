@@ -1,4 +1,5 @@
 <script setup>
+import { secureFetch } from '@/api'
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { auth } from '@/stores/auth';
@@ -28,7 +29,7 @@ async function fetchReminders() {
   error.value = '';
 
   try {
-    const response = await fetch(`${auth_store.backend_url}/api/reminders`, {
+    const response = await secureFetch(`${auth_store.backend_url}/api/reminders`, {
       method: 'GET',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' }
@@ -53,7 +54,6 @@ async function fetchReminders() {
       status: r.today_status || 'pending'
     }));
   } catch (err) {
-    console.error('Error fetching reminders:', err);
     error.value = 'Could not load your medicine reminders. Please try again.';
   } finally {
     loading.value = false;
@@ -63,7 +63,7 @@ async function fetchReminders() {
 async function updateReminderStatus(id, status) {
   updatingId.value = id;
   try {
-    const response = await fetch(`${auth_store.backend_url}/api/medicine-logs`, {
+    const response = await secureFetch(`${auth_store.backend_url}/api/medicine-logs`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -83,7 +83,6 @@ async function updateReminderStatus(id, status) {
       reminder.status = status;
     }
   } catch (err) {
-    console.error('Error updating reminder status:', err);
     error.value = 'Could not save that -- please try again.';
   } finally {
     updatingId.value = null;

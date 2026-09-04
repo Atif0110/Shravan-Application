@@ -1,4 +1,5 @@
 <script setup>
+import { secureFetch } from '@/api'
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -25,7 +26,7 @@ async function searchYoutube() {
   youtubeError.value = '';
   youtubeResults.value = [];
   try {
-    const response = await fetch(
+    const response = await secureFetch(
       `${backend_url}/api/youtube/search?q=${encodeURIComponent(youtubeQuery.value)}`,
       { credentials: 'include' }
     );
@@ -83,16 +84,14 @@ onMounted(() => {
 
 async function fetchYogaVideos() {
   try {
-    const response = await fetch(`${backend_url}/api/yoga-videos`, { credentials: 'include' });
+    const response = await secureFetch(`${backend_url}/api/yoga-videos`, { credentials: 'include' });
     if (!response.ok) {
       throw new Error('Failed to fetch yoga videos');
     }
     const data = await response.json();
     yogaVideos.value = data.videos || [];
-    console.log(yogaVideos.value)
     
   } catch (error) {
-    console.error('Error fetching yoga videos:', error);
     errorMessage.value = 'Failed to load yoga videos';
   }
 }
@@ -154,7 +153,7 @@ async function addVideo() {
 
   isLoading.value = true;
   try {
-    const response = await fetch(`${backend_url}/api/yoga-videos`, {
+    const response = await secureFetch(`${backend_url}/api/yoga-videos`, {
       credentials: 'include',
       method: 'POST',
       headers: {
@@ -179,7 +178,6 @@ async function addVideo() {
     }, 2000);
     
   } catch (error) {
-    console.error('Error adding yoga video:', error);
     errorMessage.value = 'Failed to add yoga video. Please try again.';
   } finally {
     isLoading.value = false;
@@ -195,7 +193,7 @@ async function updateVideo() {
 
   isLoading.value = true;
   try {
-    const response = await fetch(`${backend_url}/api/yoga-videos/${editingVideoId.value}`, {
+    const response = await secureFetch(`${backend_url}/api/yoga-videos/${editingVideoId.value}`, {
       credentials: 'include',
       method: 'PUT',
       headers: {
@@ -220,7 +218,6 @@ async function updateVideo() {
     }, 2000);
     
   } catch (error) {
-    console.error('Error updating yoga video:', error);
     errorMessage.value = 'Failed to update yoga video. Please try again.';
   } finally {
     isLoading.value = false;
@@ -233,7 +230,7 @@ async function deleteVideo(videoId) {
   }
 
   try {
-    const response = await fetch(`${backend_url}/api/yoga-videos/${videoId}`, {
+    const response = await secureFetch(`${backend_url}/api/yoga-videos/${videoId}`, {
       credentials: 'include',
       method: 'DELETE'
     });
@@ -251,7 +248,6 @@ async function deleteVideo(videoId) {
     }, 3000);
     
   } catch (error) {
-    console.error('Error deleting yoga video:', error);
     errorMessage.value = 'Failed to delete yoga video. Please try again.';
   }
 }

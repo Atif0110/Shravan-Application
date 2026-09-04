@@ -17,7 +17,6 @@ onMounted(() => {
       // const userDetails = JSON.parse(auth_store.userDetails);
       // username.value = userDetails.username || 'User';
     } catch (e) {
-      console.error('Error parsing user details:', e);
     }
   }
   
@@ -50,10 +49,8 @@ async function triggerSOS() {
     if (navigator.permissions && navigator.permissions.query) {
       try {
         const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
-        console.log('Current geolocation permission status:', permissionStatus.state);
         sosStatusMessage.value = `Current permission status: ${permissionStatus.state}. Requesting location...`;
       } catch (e) {
-        console.error('Error checking permission:', e);
       }
     }
 
@@ -69,10 +66,8 @@ async function triggerSOS() {
       sosStatusMessage.value = '✅ Alert sent successfully! Coordinates have been shared with emergency contacts.';
     }, 1500);
     
-    console.log('Emergency alert triggered with location:', location);
   } catch (err) {
     sosStatusMessage.value = '❌ Error: ' + err.message;
-    console.error('SOS error:', err);
   }
 }
 
@@ -91,17 +86,14 @@ function getLocation() {
     };
 
     sosStatusMessage.value = 'Waiting for location permission...';
-    console.log('Requesting geolocation...');
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        console.log('Position obtained:', position);
         const coords = `https://www.google.com/maps?q=${position.coords.latitude},${position.coords.longitude}`;
         sosStatusMessage.value = 'Location obtained successfully!';
         resolve(coords);
       },
       (error) => {
-        console.error('Geolocation error:', error);
         switch(error.code) {
           case error.PERMISSION_DENIED:
             sosStatusMessage.value = '❌ Location access denied. Please enable location in your browser settings and try again.';

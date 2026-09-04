@@ -356,3 +356,58 @@ p {
     font-size: 1.75rem;
   }
 }
+
+/* ============================================================
+   Senior-friendly accessibility layer (added audit pass)
+   Targets that matter for older eyes and hands: larger base
+   type, visible keyboard focus, 44px touch targets, and calm
+   motion for people who find animation dizzying.
+   ============================================================ */
+html {
+  font-size: 106.25%; /* rem-based text scales ~17px instead of 16px */
+}
+
+body {
+  font-size: 1rem;
+}
+
+/* Don't let browsers shrink form text to 13px by default */
+button,
+input,
+select,
+textarea,
+[role="button"] {
+  font-size: 1rem;
+}
+
+/* WCAG 2.4.7: always show where keyboard focus is */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* WCAG 2.5.5: comfortable touch targets for ageing hands */
+button,
+[role="button"],
+input[type="submit"],
+input[type="button"],
+.nav-feature,
+.feature-card,
+.list-group-item a {
+  min-height: 44px;
+}
+
+/* WCAG 2.3.3: respect users who ask for less animation */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

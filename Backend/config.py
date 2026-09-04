@@ -1,62 +1,54 @@
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
 import os
 import secrets
+from datetime import timedelta
+
 from dotenv import load_dotenv
-from flask_session import Session  # For server-side session managementAdd commentMore actions
+from flask import Flask
+from flask_session import Session
+from flask_sqlalchemy import SQLAlchemy
 from flasgger import Swagger
 
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE_PATH = os.path.join(BASE_DIR, "database.db")
+
 app = Flask(__name__, static_folder="../Frontend")
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-
-secret_key = os.environ.get('SECRET_KEY')
-if not secret_key:
-    # Falls back to a random key so the app still runs, but this means
-    # sessions/cookies won't survive a restart. Set SECRET_KEY in your
-    # .env for real (local dev or production) use.
+secret_key = os.environ.get("SECRET_KEY")
+if not secret_key or secret_key.startswith("replace-") or "your_" in secret_key:
     secret_key = secrets.token_hex(32)
-    print(
-        "WARNING: SECRET_KEY not set in environment. Using a temporary "
-        "random key for this run only -- add SECRET_KEY to Backend/.env "
-        "to keep sessions stable across restarts."
-    )
-app.config['SECRET_KEY'] = secret_key
-app.config["SESSION_TYPE"] = "filesystem"
-app.config["SESSION_PERMANENT"] = False
 
-# Frontend (5173) and backend (5000) run on different origins during
-# development, so the session cookie is "cross-site" from the browser's
-# point of view. Without SameSite=None, browsers refuse to send it back
-# on fetch() calls, which is why login state kept disappearing (profile
-# 401s, medicine reminder "taken" status resetting on navigation, etc.)
-# SameSite=None requires Secure, so we only turn it on when the app is
-# actually served over https. Locally over http, SameSite=Lax is used as
-# a fallback -- it works as long as frontend and backend share the same
-# hostname (127.0.0.1 for both, or localhost for both, not a mix).
-FLASK_ENV_HTTPS = os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
-app.config["SESSION_COOKIE_SAMESITE"] = "None" if FLASK_ENV_HTTPS else "Lax"
-app.config["SESSION_COOKIE_SECURE"] = FLASK_ENV_HTTPS
-app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config.update(
+    SECRET_KEY=secret_key,
+    SQLALCHEMY_DATABASE_URI=os.environ.get("DATABASE_URL", f"sqlite:///{DATABASE_PATH}"),
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    MAX_CONTENT_LENGTH=8 * 1024 * 1024,
+    SESSION_TYPE="filesystem",
+    SESSION_PERMANENT=True,
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+    SESSION_REFRESH_EACH_REQUEST=True,
+    SESSION_USE_SIGNER=True,
+    SESSION_COOKIE_NAME="__Host-shravan_session" if os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true" else "shravan_session",
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true",
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE=os.environ.get("SESSION_COOKIE_SAMESITE", "Lax"),
+    SESSION_COOKIE_PATH="/",
+)
+
 Session(app)
-
+db = SQLAlchemy(app)
 
 swagger_config = {
     "headers": [],
-    "specs": [
-        {
-            "endpoint": 'apispec_1',
-            "route": '/apispec_1.json',
-            "rule_filter": lambda rule: True,  # all in
-            "model_filter": lambda tag: True,  # all in
-        }
-    ],
+    "specs": [{
+        "endpoint": "apispec_1",
+        "route": "/apispec_1.json",
+        "rule_filter": lambda rule: True,
+        "model_filter": lambda tag: True,
+    }],
     "static_url_path": "/flasgger_static",
     "swagger_ui": True,
-    "specs_route": "/apidocs/"
+    "specs_route": "/apidocs/",
 }
 
 swagger_template = {
@@ -64,10 +56,8 @@ swagger_template = {
     "info": {
         "title": "Shravan API",
         "description": "API documentation for Shravan Health App",
-        "version": "1.0.0"
-    }
+        "version": "2.0.0",
+    },
 }
 
 swagger = Swagger(app, config=swagger_config, template=swagger_template)
-
-db = SQLAlchemy(app)

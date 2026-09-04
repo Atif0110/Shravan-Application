@@ -1,4 +1,5 @@
 <script setup>
+import { secureFetch } from '@/api'
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -34,7 +35,7 @@ async function addReminder() {
       frequency: newReminder.value.frequency
     };
 
-    const res = await fetch(`${backend_url}/api/reminders`, {
+    const res = await secureFetch(`${backend_url}/api/reminders`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -61,7 +62,6 @@ async function addReminder() {
       frequency: 'Daily'
     };
   } catch (err) {
-    console.error('Error adding reminder:', err);
     errorMessage.value = err.message || 'An error occurred while adding the reminder';
     setTimeout(() => { errorMessage.value = ''; }, 3000);
   }

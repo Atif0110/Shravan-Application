@@ -1,4 +1,5 @@
 <script setup>
+import { secureFetch } from '@/api'
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { auth } from '@/stores/auth';
@@ -23,7 +24,6 @@ onMounted(() => {
         pincode.value = details.pincode;
       }
     } catch (e) {
-      console.error('Error parsing user details:', e);
     }
   }
 });
@@ -39,7 +39,7 @@ async function fetchTrends() {
   hasSearched.value = true;
 
   try {
-    const response = await fetch(
+    const response = await secureFetch(
       `${auth_store.backend_url}/api/analytics/symptom-trends?pincode=${encodeURIComponent(pincode.value.trim())}`,
       {
         method: 'GET',
@@ -56,7 +56,6 @@ async function fetchTrends() {
 
     trends.value = data.trends || [];
   } catch (err) {
-    console.error('Error fetching symptom trends:', err);
     error.value = err.message || 'Failed to load health trends';
     trends.value = [];
   } finally {

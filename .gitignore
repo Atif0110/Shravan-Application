@@ -1,38 +1,26 @@
-# ==== Secrets — never commit these ====
 .env
-.env.local
-.env.*.local
-authorisation.json
+.env.*
+!.env.example
 
-# ==== Python / Flask (Backend) ====
-Backend/venv/
-Backend/env/
-Backend/__pycache__/
-Backend/**/__pycache__/
-*.pyc
-Backend/instance/
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite*
+
+Backend/backend_venv/
+Backend/uploads/
 Backend/flask_session/
-flask_session/
+Tests/Reports/
 
-# ==== Node / Vue (Frontend) ====
-Frontend/node_modules/
-Frontend/dist/
 node_modules/
+Frontend/dist/
 
-# ==== Flutter / Dart (mobile-application) ====
 mobile-application/frontend/.dart_tool/
-mobile-application/frontend/.flutter-plugins
-mobile-application/frontend/.flutter-plugins-dependencies
 mobile-application/frontend/build/
 mobile-application/frontend/.pub-cache/
-mobile-application/frontend/.pub/
+mobile-application/frontend/.flutter-plugins
+mobile-application/frontend/.flutter-plugins-dependencies
 
-# ==== IDE / OS junk ====
-.vs/
 .vscode/
 .idea/
 .DS_Store
-*.iml
-
-# ==== Test reports ====
-Tests/Reports/

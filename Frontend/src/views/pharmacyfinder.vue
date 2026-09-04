@@ -1,4 +1,5 @@
 <script setup>
+import { secureFetch } from '@/api'
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -37,24 +38,14 @@ const displayedPharmacies = computed(() => {
 // Add reverse geocoding function
 async function reverseGeocode(lat, lng) {
   try {
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
-    );
-
-    if (!response.ok) {
-      throw new Error('Geocoding request failed');
-    }
-    
+    const url = GOOGLE_MAPS_API_KEY
+      ? `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
+      : `${backend_url}/api/geocode/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`;
+    const response = await secureFetch(url);
+    if (!response.ok) throw new Error('Geocoding request failed');
     const data = await response.json();
-    
-    if (data.status === 'OK' && data.results.length > 0) {
-      return data.results[0].formatted_address;
-    } else {
-      console.warn('Geocoding failed:', data.status);
-      return null;
-    }
+    return GOOGLE_MAPS_API_KEY ? data.results?.[0]?.formatted_address || null : data.address || null;
   } catch (error) {
-    console.error('Error in reverse geocoding:', error);
     return null;
   }
 }
@@ -62,7 +53,7 @@ async function reverseGeocode(lat, lng) {
 // Add geocoding function for place names
 async function geocodePlace(placeName) {
   try {
-    const response = await fetch(
+    const response = await secureFetch(
       `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(placeName)}&key=${GOOGLE_MAPS_API_KEY}`
     );
 
@@ -80,11 +71,9 @@ async function geocodePlace(placeName) {
         formatted_address: data.results[0].formatted_address
       };
     } else {
-      console.warn('Geocoding failed:', data.status);
       return null;
     }
   } catch (error) {
-    console.error('Error in geocoding:', error);
     return null;
   }
 }
@@ -94,12 +83,11 @@ async function fetchPharmacies(lat, lon, radius = 1000) {
   error.value = '';
 
   try {
-    const response = await fetch(`${backend_url}/api/pharmacy-finder`, {
+    const response = await secureFetch(`${backend_url}/api/pharmacy-finder`, {
       credentials: 'include',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
       },
       body: JSON.stringify({
         latitude: lat,
@@ -114,7 +102,6 @@ async function fetchPharmacies(lat, lon, radius = 1000) {
     }
 
     const data = await response.json();
-    console.log('API Response:', data);
     if (data.status === 'success') {
       // Process the API response
       const pharmacyData = [];
@@ -170,7 +157,6 @@ async function fetchPharmacies(lat, lon, radius = 1000) {
     }
     
   } catch (err) {
-    console.error('Error fetching pharmacies:', err);
     error.value = `Failed to fetch pharmacies: ${err.message}`;
     pharmacies.value = [];
   } finally {
@@ -280,7 +266,6 @@ function copyPhoneNumber() {
         copySuccess.value = false;
       }, 2000);
     } catch (err) {
-      console.error('Failed to copy phone number:', err);
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
       textArea.value = selectedPharmacy.value.phone.replace(/\s+/g, '');

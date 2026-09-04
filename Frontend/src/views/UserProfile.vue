@@ -1,4 +1,5 @@
 <script setup>
+import { secureFetch } from '@/api'
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { auth } from '@/stores/auth';
@@ -53,7 +54,6 @@ const editForm = ref({
 const validationErrors = ref({});
 const userDetails = localStorage.getItem('user_details') ? JSON.parse(localStorage.getItem('user_details')) : {};
 async function fetchUserData() {
-  console.log(userDetails);
   if (!userDetails.user_id) {
     error.value = 'User not authenticated';
     return;
@@ -63,7 +63,7 @@ async function fetchUserData() {
   error.value = '';
 
   try {
-    const response = await fetch(`${backend_url}/api/users/${userDetails.user_id}`, {
+    const response = await secureFetch(`${backend_url}/api/users/${userDetails.user_id}`, {
       credentials: 'include',
       method: 'GET',
       headers: {
@@ -88,7 +88,6 @@ async function fetchUserData() {
       throw new Error(data.error || 'Failed to fetch user data');
     }
   } catch (err) {
-    console.error('Error fetching user data:', err);
     error.value = `Failed to fetch user data: ${err.message}`;
   } finally {
     loading.value = false;
@@ -145,7 +144,7 @@ async function updateProfile() {
     // Remove user_id from update data
     delete updateData.user_id;
 
-    const response = await fetch(`${backend_url}/api/users/${user.value.user_id}`, {
+    const response = await secureFetch(`${backend_url}/api/users/${user.value.user_id}`, {
       credentials: 'include',
       method: 'PUT',
       headers: {
@@ -182,7 +181,6 @@ async function updateProfile() {
       throw new Error(data.error || 'Failed to update profile');
     }
   } catch (err) {
-    console.error('Error updating profile:', err);
     error.value = err.message;
   } finally {
     loading.value = false;
@@ -230,7 +228,7 @@ const copySuccess = ref(false);
 async function fetchEmergencyContacts() {
   try {
 
-    const response = await fetch(`${backend_url}/api/emergency-contacts`, {
+    const response = await secureFetch(`${backend_url}/api/emergency-contacts`, {
       credentials: 'include',
       method: 'PUT',
       headers: {
@@ -246,7 +244,6 @@ async function fetchEmergencyContacts() {
     const data = await response.json();
     emergencyContacts.value = data.contacts || [];
   } catch (err) {
-    console.error('Error fetching emergency contacts:', err);
     emergencyContacts.value = [];
   }
 }
@@ -273,7 +270,7 @@ async function addEmergencyContact() {
   }
 
   try {
-    const response = await fetch(`${backend_url}/api/emergency-contacts`, {
+    const response = await secureFetch(`${backend_url}/api/emergency-contacts`, {
       credentials: 'include',
       method: 'POST',
       headers: {
@@ -311,7 +308,6 @@ async function addEmergencyContact() {
       success.value = '';
     }, 3000);
   } catch (err) {
-    console.error('Error adding emergency contact:', err);
     error.value = err.message;
   }
 }
@@ -342,7 +338,6 @@ async function copyPhoneNumber() {
         copySuccess.value = false;
       }, 2000);
     } catch (err) {
-      console.error('Failed to copy phone number:', err);
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
       textArea.value = selectedContact.value.number.replace(/\s+/g, '');

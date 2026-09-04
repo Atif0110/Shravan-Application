@@ -25,7 +25,6 @@ onMounted(async () => {
       await fetchSOSHistory();
     }
   } catch (error) {
-    console.error('Error loading patient data:', error);
   }
 });
 
@@ -102,7 +101,6 @@ async function trackCurrentLocation() {
     mapUrl.value = `https://www.google.com/maps?q=${locationData.value.latitude},${locationData.value.longitude}`;
   } catch (err) {
     error.value = "Failed to retrieve location. Please try again.";
-    console.error(err);
   } finally {
     loading.value = false;
   }

@@ -12,7 +12,8 @@ class Roles(db.Model):
 class Medicines(db.Model):
     __tablename__ = 'medicines'
     medicine_id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False)
+    name = db.Column(db.String, nullable=False)
     dosage = db.Column(db.String)
     description = db.Column(db.Text)
 
@@ -26,7 +27,7 @@ class Hospitals(db.Model):
     __tablename__ = 'hospitals'
     hospital_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     hospital_name = db.Column(db.String, nullable=False)
-    address = db.Column(db.Text, nullable=True) 
+    address = db.Column(db.Text, nullable=True)
     place_id = db.Column(db.String, unique=True)
     latitudes = db.Column(db.Numeric(10, 6))
     longitudes = db.Column(db.Numeric(10, 6))
@@ -55,7 +56,7 @@ class Hospitals(db.Model):
 class Pharmacy(db.Model):
     __tablename__ = 'pharmacy'
     pharmacy_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    address = db.Column(db.Text, nullable=True) 
+    address = db.Column(db.Text, nullable=True)
     place_id = db.Column(db.String(255), unique=True, nullable=False)
     name = db.Column(db.String(255), nullable=False)
     latitude = db.Column(db.Numeric(10, 6), nullable=False)
@@ -67,7 +68,7 @@ class Pharmacy(db.Model):
     opening_hours_json = db.Column(db.Text, nullable=True)
     business_status = db.Column(db.String(50), nullable=True)
     delivery_available = db.Column(db.Boolean, default=False)
-    
+
     def to_dict(self):
         return {
             "pharmacy_id": self.pharmacy_id,
@@ -106,7 +107,7 @@ class User(db.Model):
     gender = db.Column(db.String, nullable=True)
     dob = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-    address = db.Column(db.Text, nullable=True) 
+    address = db.Column(db.Text, nullable=True)
     pincode = db.Column(db.String(6), nullable=True)
     role_id = db.Column(db.Integer, db.ForeignKey('roles.role_id'), nullable=True)
     role = db.relationship('Roles', backref='users')
@@ -141,6 +142,7 @@ class Reminders(db.Model):
 
 class MedicineLogs(db.Model):
     __tablename__ = 'medicine_logs'
+    __table_args__ = (db.UniqueConstraint('reminder_id', 'log_date', name='uq_medicine_log_day'),)
     log_id = db.Column(db.Integer, primary_key=True)
     reminder_id = db.Column(db.Integer, db.ForeignKey('reminders.reminder_id'))
     log_date = db.Column(db.Date)
@@ -189,10 +191,9 @@ class YogaAsana(db.Model):
     duration_minutes = db.Column(db.Integer)
     benefits = db.Column(db.Text)
     instructions = db.Column(db.Text)
-    
-    # Relationship to images
+
     images = db.relationship('YogaAsanaImages', backref='asana', cascade='all, delete-orphan')
-    
+
     def to_dict(self):
         return {
             "asana_id": self.asana_id,
@@ -212,8 +213,8 @@ class YogaAsanaImages(db.Model):
     image_id = db.Column(db.Integer, primary_key=True)
     asana_id = db.Column(db.Integer, db.ForeignKey('yoga_asana.asana_id'), nullable=False)
     image_url = db.Column(db.String, nullable=False)
-    display_order = db.Column(db.Integer, default=1)  # Order in which images should be displayed
-    
+    display_order = db.Column(db.Integer, default=1)
+
     def to_dict(self):
         return {
             "image_id": self.image_id,
@@ -221,7 +222,7 @@ class YogaAsanaImages(db.Model):
             "image_url": self.image_url,
             "display_order": self.display_order
         }
-    
+
 
 class YogaVideos(db.Model):
     __tablename__ = 'yoga_videos'
@@ -231,8 +232,7 @@ class YogaVideos(db.Model):
     video_url = db.Column(db.String, nullable=False)
     difficulty = db.Column(db.String, nullable=True)
     duration_minutes = db.Column(db.Integer, nullable=True)
-    # created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-    
+
     def to_dict(self):
         return {
             "video_id": self.video_id,
@@ -241,5 +241,22 @@ class YogaVideos(db.Model):
             "video_url": self.video_url,
             "difficulty": self.difficulty,
             "duration_minutes": self.duration_minutes,
-            # "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+class VoiceReminder(db.Model):
+    """A short spoken note a user records and keeps for later."""
+    __tablename__ = 'voice_reminders'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    audio_url = db.Column(db.String(500), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    user = db.relationship('User', backref='voice_reminders')
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "audioUrl": self.audio_url,
+            "created_at": self.created_at.isoformat() if self.created_at else None
         }

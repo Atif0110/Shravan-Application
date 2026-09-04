@@ -1,13 +1,15 @@
 import requests
 from flask import Flask, request, session, jsonify
 from models import *
-import geocoder
 from modules.chatbot import Chatbot
 from modules.nearby_places import NearbyPlaces
 from modules.website_scraper import WebsiteScraper
 from modules.generative_ai import GenerativeAI
 from flasgger.utils import swag_from
 import json
+import os
+import tempfile
+import hashlib
 
 
 
@@ -74,17 +76,17 @@ def function_routes(app, db, auth):
                 'empathetic': ['Parker', 'Jamie', 'Alex', 'Robin', 'Gray']
             }
         }
-        
+
         gender_key = gender.lower() if gender.lower() in names else 'non-binary'
         personality_key = personality_type.lower() if personality_type.lower() in names[gender_key] else 'friendly'
-        
+
         import random
-        random.seed(hash(f"{gender}{personality_type}{age}"))  # Consistent name for same params
+        random.seed(int(hashlib.sha256(f"{gender}:{personality_type}:{age}".encode()).hexdigest(), 16))
         return random.choice(names[gender_key][personality_key])
 
     def generate_personalized_prompt(name, gender, age, profession, personality_type, expertise_areas, communication_style):
         """Generate a comprehensive system prompt based on user parameters"""
-        
+
         age_context = ""
         if age < 25:
             age_context = "You have a youthful, energetic perspective and are up-to-date with modern trends and technology."
@@ -113,7 +115,7 @@ def function_routes(app, db, auth):
 
         personality_desc = personality_traits.get(personality_type.lower(), personality_traits['friendly'])
         comm_style_desc = communication_styles.get(communication_style.lower(), communication_styles['casual'])
-        
+
         expertise_context = ""
         if expertise_areas:
             if isinstance(expertise_areas, list):
@@ -144,8 +146,7 @@ def function_routes(app, db, auth):
             Remember: You are not an AI assistant - you are {name}, a real person with the characteristics described above. Respond as this person would naturally respond.
         """
         return prompt.strip()
-        
-    ## Function Routes
+
     @app.route('/api/chatbot', methods=['POST'])
     @swag_from("docs/chatbot.yml")
     def chatbot_route():
@@ -161,32 +162,34 @@ def function_routes(app, db, auth):
             - 400: Invalid input.
             - 500: Internal server error.
         """
-        
-        data = request.get_json()
-        user_input = data.get('question', '').strip()
+
+        data = request.get_json(silent=True) or {}
+        user_input = str(data.get('question', '')).strip()
         history = data.get('history', [])
+        if len(user_input) > 4000:
+            return jsonify({'error': 'Question is too long', 'status': 'fail'}), 400
+        if isinstance(history, list):
+            history = history[-20:]
 
         if user_input is None or user_input == '':
             return jsonify({'response': 'Please enter a valid question.'}), 400
 
         try:
-            # Build the full conversation history for the chatbot
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-            
-            # Add the full conversation history if provided
+
             if isinstance(history, list) and history:
                 messages.extend(history)
             elif isinstance(history, dict) and (history.get("user") or history.get("assistant")):
-                # Handle backward compatibility with old format
                 if history.get("user"):
                     messages.append({"role": "user", "content": history["user"]})
                 if history.get("assistant"):
                     messages.append({"role": "assistant", "content": history["assistant"]})
-            
-            # Add the current user input
+
             messages.append({"role": "user", "content": user_input})
-            
-            # Get response from chatbot with full history
+
+            if chatbot.client is None:
+                return jsonify({'response': "I'm not available right now -- the AI service isn't configured on this server. Please try again later."}), 200
+
             chat_completion = chatbot.client.chat.completions.create(
                 messages=messages,
                 model="llama-3.3-70b-versatile",
@@ -201,7 +204,7 @@ def function_routes(app, db, auth):
     def personal_chatbot():
         """
         Creates a personalized chatbot based on user-defined characteristics.
-        
+
         Request JSON Body:
             question (str): The user's question/message (required).
             history (list): Previous conversation history as list of message objects (optional).
@@ -211,85 +214,81 @@ def function_routes(app, db, auth):
             personality_type (str): Personality type ('friendly', 'professional', 'creative', 'analytical', 'empathetic') (required).
             expertise_areas (list/str): Areas of expertise (optional).
             communication_style (str): Communication style ('casual', 'formal', 'humorous', 'direct', 'detailed') (optional, defaults to 'casual').
-            
+
         Returns:
             JSON response with:
                 - response: The personalized chatbot's reply
                 - persona_name: The generated name for this persona
                 - status: 'success' or error details
         """
-        
+
         try:
-            data = request.get_json()
-            
-            # Required fields
-            user_input = data.get('question', '').strip()
+            data = request.get_json(silent=True) or {}
+
+            user_input = str(data.get('question', '')).strip()
+            if len(user_input) > 4000:
+                return jsonify({'error': 'Question is too long.', 'status': 'fail'}), 400
             gender = data.get('gender', '').strip()
             age = data.get('age')
             profession = data.get('profession', '').strip()
             personality_type = data.get('personality_type', '').strip()
-            
-            # Optional fields
+
             history = data.get('history', [])
+            if isinstance(history, list):
+                history = history[-20:]
             expertise_areas = data.get('expertise_areas', [])
             communication_style = data.get('communication_style', 'casual').strip()
-            
-            # Validation
+
             if not user_input:
                 return jsonify({'error': 'Question is required.', 'status': 'fail'}), 400
-                
+
             if not all([gender, age, profession, personality_type]):
                 return jsonify({'error': 'Gender, age, profession, and personality_type are required fields.', 'status': 'fail'}), 400
-                
+
             try:
                 age = int(age)
                 if age < 1 or age > 120:
                     return jsonify({'error': 'Age must be between 1 and 120.', 'status': 'fail'}), 400
             except (ValueError, TypeError):
                 return jsonify({'error': 'Age must be a valid number.', 'status': 'fail'}), 400
-            
-            # Validate personality type
+
             valid_personalities = ['friendly', 'professional', 'creative', 'analytical', 'empathetic']
             if personality_type.lower() not in valid_personalities:
                 return jsonify({'error': f'Personality type must be one of: {", ".join(valid_personalities)}', 'status': 'fail'}), 400
-            
-            # Validate communication style
+
             valid_styles = ['casual', 'formal', 'humorous', 'direct', 'detailed']
             if communication_style.lower() not in valid_styles:
-                communication_style = 'casual'  # Default fallback
-            
-            # Generate persona name and system prompt
+                communication_style = 'casual'
+
             persona_name = generate_personalized_name(gender, personality_type, age)
             personalized_prompt = generate_personalized_prompt(
-                persona_name, gender, age, profession, personality_type, 
+                persona_name, gender, age, profession, personality_type,
                 expertise_areas, communication_style
             )
-            
-            # Build the conversation messages
+
             messages = [{"role": "system", "content": personalized_prompt}]
-            
-            # Add conversation history if provided
+
             if isinstance(history, list) and history:
                 messages.extend(history)
             elif isinstance(history, dict) and (history.get("user") or history.get("assistant")):
-                # Handle backward compatibility
                 if history.get("user"):
                     messages.append({"role": "user", "content": history["user"]})
                 if history.get("assistant"):
                     messages.append({"role": "assistant", "content": history["assistant"]})
-            
-            # Add current user input
+
             messages.append({"role": "user", "content": user_input})
-            
-            # Get response from the personalized chatbot
+
+            if chatbot.client is None:
+                return jsonify({'response': "I'm not available right now -- the AI service isn't configured on this server. Please try again later."}), 200
+
             chat_completion = chatbot.client.chat.completions.create(
                 messages=messages,
                 model="llama-3.3-70b-versatile",
-                temperature=0.8,  # Slightly higher temperature for more personality
+                temperature=0.8,
             )
-            
+
             reply = chat_completion.choices[0].message.content
-            
+
             return jsonify({
                 'response': reply,
                 'persona_name': persona_name,
@@ -303,9 +302,45 @@ def function_routes(app, db, auth):
                 },
                 'status': 'success'
             }), 200
-            
+
         except Exception as e:
             return jsonify({'error': f"An unexpected error occurred: {str(e)}", 'status': 'fail'}), 500
+
+    @app.route('/api/transcribe', methods=['POST'])
+    def transcribe_audio():
+        """
+        Converts an uploaded audio clip into text using Groq's Whisper model.
+
+        This is the server-side speech-to-text fallback used by browsers that
+        don't support the Web Speech API (Firefox, some Safari builds) and by
+        the mobile app's voice recorder. Accepts a multipart file field named
+        'file' or 'audio', plus an optional 'language' hint ('en', 'hi', ...).
+        """
+        audio_file = request.files.get('file') or request.files.get('audio')
+        if not audio_file:
+            return jsonify({'error': 'No audio file provided', 'status': 'fail'}), 400
+        if chatbot.client is None:
+            return jsonify({'error': 'Speech-to-text is not configured. Add GROQ_API_KEY to Backend/.env to enable voice transcription.', 'status': 'fail'}), 503
+
+        suffix = os.path.splitext(audio_file.filename or '')[-1] or '.m4a'
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp_path = tmp.name
+                audio_file.save(tmp.name)
+
+            with open(tmp_path, 'rb') as fh:
+                result = chatbot.client.audio.transcriptions.create(
+                    file=(f"audio{suffix}", fh),
+                    model="whisper-large-v3-turbo",
+                    language=request.form.get('language') or None,
+                )
+            return jsonify({'transcription': result.text, 'status': 'success'}), 200
+        except Exception as exc:
+            return jsonify({'error': f'Transcription failed: {str(exc)}', 'status': 'fail'}), 500
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
     @app.route('/api/doctor-finder', methods=['POST'])
     @swag_from("docs/doctor_finder.yml")
@@ -331,8 +366,7 @@ def function_routes(app, db, auth):
             200: Success. Returns the place details and scraped doctor data.
             400/500: Error in processing or scraping data.
         """
-    
-        # try:
+
         data = request.get_json()
         latitude = data.get('latitude')
         longitude = data.get('longitude')
@@ -341,8 +375,14 @@ def function_routes(app, db, auth):
         specialist = data.get('specialist', 'obstetrician')
         limit = data.get('limit', 5)
 
-        if latitude is None or longitude is None:
-            return jsonify({'error': 'Latitude and longitude are required fields.', 'status': 'fail'}), 400
+        try:
+            latitude = float(latitude)
+            longitude = float(longitude)
+            radius = min(max(int(radius), 100), 5000)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Latitude, longitude and radius must be valid numbers', 'status': 'fail'}), 400
+        if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            return jsonify({'error': 'Coordinates are outside valid bounds', 'status': 'fail'}), 400
 
         nearby_hospitals = nearby_places.find_nearby_places(latitude, longitude, type, radius)
         if not nearby_hospitals:
@@ -390,9 +430,9 @@ def function_routes(app, db, auth):
                     doctor_scrape = web_scraper.fetch_doctor_information(page, specialist)
                     page_scrape.append(doctor_scrape)
                 scrape[place_id] = {"name": name, "website": website, "doctor_scrape": page_scrape, "pages": doctor_pages}
-                
+
         return scrape
-        
+
 
 
     @app.route('/api/pharmacy-finder', methods=['POST'])
@@ -421,8 +461,14 @@ def function_routes(app, db, auth):
             type = data.get('type', 'pharmacy').lower()
             radius = data.get('radius', 1000)
 
-            if latitude is None or longitude is None:
-                return jsonify({'error': 'Latitude and longitude are required fields.', 'status': 'fail'}), 400
+            try:
+                latitude = float(latitude)
+                longitude = float(longitude)
+                radius = min(max(int(radius), 100), 5000)
+            except (TypeError, ValueError):
+                return jsonify({'error': 'Latitude, longitude and radius must be valid numbers', 'status': 'fail'}), 400
+            if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+                return jsonify({'error': 'Coordinates are outside valid bounds', 'status': 'fail'}), 400
 
             pharmacy_info = nearby_places.find_nearby_places(latitude, longitude, type, radius)
             if not pharmacy_info:
@@ -430,7 +476,7 @@ def function_routes(app, db, auth):
 
             place_ids = [place.get('place_id') for place in pharmacy_info if place.get('place_id')]
 
-            place_details = {}  
+            place_details = {}
             for place_id in place_ids:
                 details = nearby_places.place_details(place_id)
                 if details:
@@ -440,7 +486,7 @@ def function_routes(app, db, auth):
 
         except Exception as e:
             return jsonify({'error': f"An unexpected error occurred: {str(e)}", 'status': 'fail'}), 500
-        
+
 
     @app.route('/api/hospital-finder', methods=['POST'])
     @swag_from("docs/hospital-finder.yml")
@@ -468,8 +514,14 @@ def function_routes(app, db, auth):
             type = data.get('type', 'hospital').lower()
             radius = data.get('radius', 1000)
 
-            if latitude is None or longitude is None:
-                return jsonify({'error': 'Latitude and longitude are required fields.', 'status': 'fail'}), 400
+            try:
+                latitude = float(latitude)
+                longitude = float(longitude)
+                radius = min(max(int(radius), 100), 5000)
+            except (TypeError, ValueError):
+                return jsonify({'error': 'Latitude, longitude and radius must be valid numbers', 'status': 'fail'}), 400
+            if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+                return jsonify({'error': 'Coordinates are outside valid bounds', 'status': 'fail'}), 400
 
             hospital_info = nearby_places.find_nearby_places(latitude, longitude, type, radius)
             if not hospital_info:
@@ -477,7 +529,7 @@ def function_routes(app, db, auth):
 
             place_ids = [place.get('place_id') for place in hospital_info if place.get('place_id')]
 
-            place_details = {}  
+            place_details = {}
             for place_id in place_ids:
                 details = nearby_places.place_details(place_id)
                 if details:

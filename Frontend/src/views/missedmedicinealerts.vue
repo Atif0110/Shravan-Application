@@ -21,7 +21,6 @@ onMounted(async () => {
     medicationUpdates.value = getMockData();
     loading.value = false;
   } catch (err) {
-    console.error('Error fetching medication data:', err);
     error.value = 'Unable to load medication data. Please try again.';
     loading.value = false;
   }

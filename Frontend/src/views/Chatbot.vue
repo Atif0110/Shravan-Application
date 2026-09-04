@@ -10,9 +10,16 @@
           </div>
         </div>
         <div class="header-controls">
-          <button 
-            @click="clearChatHistory" 
-            class="clear-button" 
+          <button
+            @click="toggleSpeech"
+            class="clear-button"
+            :title="speechEnabled ? 'Turn off voice replies' : 'Turn on voice replies'"
+          >
+            <span class="material-icons">{{ speechEnabled ? 'volume_up' : 'volume_off' }}</span>
+          </button>
+          <button
+            @click="clearChatHistory"
+            class="clear-button"
             title="Clear chat history"
           >
             <span class="material-icons">refresh</span>
@@ -23,12 +30,12 @@
       <div class="chat-messages" ref="messagesContainer">
         <div v-if="messages.length === 0" class="empty-chat">
         </div>
-        
-        <div v-for="(msg, index) in messages" :key="index" 
+
+        <div v-for="(msg, index) in messages" :key="index"
              :class="['message-bubble', msg.sender]">
           <div class="message-content">
-            <div v-if="msg.sender === 'bot'" 
-                 class="markdown-content" 
+            <div v-if="msg.sender === 'bot'"
+                 class="markdown-content"
                  v-html="parseMarkdown(msg.text)">
             </div>
             <p v-else>{{ msg.text }}</p>
@@ -58,9 +65,9 @@
             @keydown.enter.prevent="sendMessage"
             ref="inputField"
           />
-          <button 
-            type="button" 
-            @click="startListening" 
+          <button
+            type="button"
+            @click="startListening"
             :disabled="!supportsSpeech || isProcessing"
             class="voice-btn"
             :class="{ 'listening': isListening }"
@@ -68,8 +75,8 @@
           >
             <span class="material-icons">{{ isListening ? 'mic' : 'mic_none' }}</span>
           </button>
-          <button 
-            type="button" 
+          <button
+            type="button"
             class="send-btn"
             :disabled="!userInput.trim() || isProcessing"
             @click="sendMessage"
@@ -78,6 +85,7 @@
             <span class="material-icons">send</span>
           </button>
         </form>
+        <p v-if="voiceNotice" class="voice-notice">{{ voiceNotice }}</p>
       </div>
     </div>
   </div>
@@ -115,14 +123,20 @@ const chatHistory = ref<ChatHistory>({ user: '', assistant: '' });
 let recognition: any = null;
 let speechBuffer = '';
 
+// Voice replies can be switched off by seniors who find sudden audio
+// startling -- the choice is remembered for next time.
+const speechEnabled = ref(localStorage.getItem('shravan_tts_enabled') !== 'off');
+// Short, friendly status/error line shown just above the input box.
+const voiceNotice = ref('');
+
 onMounted(() => {
-  
+
   // Reset chat history for new session
   chatHistory.value = { user: '', assistant: '' };
-  
+
   // Initialize with a welcome message
-  messages.value.push({ 
-    text: "Hello! I'm SHARVAN, your health assistant. How can I help you today?", 
+  messages.value.push({
+    text: "Hello! I'm SHARVAN, your health assistant. How can I help you today?",
     sender: 'bot',
     time: getCurrentTime()
   });
@@ -130,22 +144,22 @@ onMounted(() => {
 
 
   scrollToBottom();
-  
+
 
   document.body.classList.toggle('dark-mode', isDarkMode.value);
-  
+
 
   // Scroll to bottom of messages
   scrollToBottom();
-  
+
   // Check for dark mode preference
   document.body.classList.toggle('dark-mode', isDarkMode.value);
-  
+
   // Initialize speech recognition
 
   const SpeechRecognitionClass =
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
+
   if (SpeechRecognitionClass) {
     supportsSpeech.value = true;
     recognition = new SpeechRecognitionClass();
@@ -162,6 +176,9 @@ onMounted(() => {
     recognition.onstart = () => {
       isListening.value = true;
       speechBuffer = '';
+      // If the assistant was still talking from the last answer, cut it
+      // short -- nobody likes being talked over.
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     };
 
     recognition.onend = () => {
@@ -194,10 +211,23 @@ onMounted(() => {
       // still hearing them, without submitting anything yet.
       userInput.value = (speechBuffer + interimTranscript).trim();
     };
-    
-    recognition.onerror = () => {
+
+    recognition.onerror = (event: any) => {
       isListening.value = false;
+      const code = event && event.error;
+      if (code === 'no-speech') {
+        voiceNotice.value = "I didn't hear anything. Tap the mic and try again.";
+      } else if (code === 'not-allowed' || code === 'service-not-allowed') {
+        voiceNotice.value = 'Microphone access is blocked. Allow it in your browser settings, then try again.';
+        supportsSpeech.value = false;
+      } else if (code === 'network') {
+        voiceNotice.value = 'The voice service lost its connection. Check your internet and tap the mic again.';
+      } else {
+        voiceNotice.value = 'Voice input did not work this time. Please try again or type instead.';
+      }
       speechBuffer = '';
+      // Let the message fade naturally instead of leaving it on screen forever.
+      window.setTimeout(() => { voiceNotice.value = ''; }, 6000);
     };
   }
 });
@@ -224,18 +254,12 @@ const getCurrentTime = () => {
 
 // Send message to backend
 const sendMessage = async () => {
-  console.log("=== SEND MESSAGE FUNCTION CALLED ===");
-  console.log("User input:", userInput.value);
-  console.log("User input trimmed:", userInput.value?.trim());
-  console.log("Is processing:", isProcessing.value);
-  
+
   if (!userInput.value?.trim() || isProcessing.value) {
-    console.log("Early return - empty input or processing");
     return;
   }
 
   const messageText = userInput.value;
-  console.log("Message text:", messageText);
   userInput.value = '';
   isProcessing.value = true;
 
@@ -252,9 +276,7 @@ const sendMessage = async () => {
       question: messageText,
       history: chatHistory.value
     };
-    console.log('Sending payload:', payload);
-    console.log('Backend URL:', authStore.backend_url);
-    
+
     // Make API call to backend
     const response = await axios.post(`${authStore.backend_url}/api/chatbot`, payload, {
       headers: {
@@ -262,17 +284,19 @@ const sendMessage = async () => {
       }
     });
 
-    console.log('Response received:', response);
 
     if (response.status === 200 && response.data.response) {
       const botResponse = response.data.response;
-      
+
       // Add bot message
       messages.value.push({
         text: botResponse,
         sender: 'bot',
         time: getCurrentTime()
       });
+
+      // Read the answer aloud (if the speaker toggle is on).
+      speakReply(botResponse);
 
       // Update chat history for the current session
       chatHistory.value = {
@@ -285,10 +309,9 @@ const sendMessage = async () => {
 
     isProcessing.value = false;
   } catch (error) {
-    console.error('Error sending message:', error);
-    
+
     let errorMessage = "Sorry, I couldn't process your request. Please try again.";
-    
+
     // Handle specific error cases
     if (axios.isAxiosError(error)) {
       if (error.response?.status === 400) {
@@ -307,7 +330,7 @@ const sendMessage = async () => {
       sender: 'bot',
       time: getCurrentTime()
     });
-    
+
     isProcessing.value = false;
   }
 };
@@ -316,11 +339,49 @@ const sendMessage = async () => {
 
 // Trigger voice input
 
+// Turn the assistant's spoken replies on or off.
+const toggleSpeech = () => {
+  speechEnabled.value = !speechEnabled.value;
+  localStorage.setItem('shravan_tts_enabled', speechEnabled.value ? 'on' : 'off');
+  if (!speechEnabled.value && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+};
+
+// Read a bot reply out loud. Strips markdown symbols so the voice
+// doesn't stumble over asterisks and backticks.
+const speakReply = (text: string) => {
+  if (!speechEnabled.value || !('speechSynthesis' in window)) return;
+  const plain = String(text).replace(/[#*`>_\[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!plain) return;
+  const utterance = new SpeechSynthesisUtterance(plain.slice(0, 400));
+  const voices = window.speechSynthesis.getVoices();
+  utterance.voice =
+    voices.find(v => v.lang.startsWith('en-IN')) ||
+    voices.find(v => v.lang.startsWith('en')) ||
+    null;
+  utterance.rate = 0.95; // a touch slower suits older listeners
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+};
+
 const startListening = () => {
-  if (recognition && !isListening.value) {
+  if (!recognition) {
+    voiceNotice.value = "Voice input isn't supported in this browser, but you can still type your question.";
+    return;
+  }
+  // The recognition object ends up in a broken state after some errors,
+  // and calling start() on it then throws. Stopping it first resets it.
+  try {
+    if (isListening.value) {
+      recognition.stop();
+      return;
+    }
     recognition.start();
-  } else if (recognition && isListening.value) {
-    recognition.stop();
+  } catch (err) {
+    if (err && (err as any).name === 'InvalidStateError') {
+      recognition.stop();
+    }
   }
 };
 
@@ -339,8 +400,8 @@ const clearChatHistory = () => {
   chatHistory.value = { user: '', assistant: '' };
   // Add welcome message after clearing
   setTimeout(() => {
-    messages.value.push({ 
-      text: "Hello! I'm SHRAVAN, your health assistant. How can I help you today?", 
+    messages.value.push({
+      text: "Hello! I'm SHRAVAN, your health assistant. How can I help you today?",
       sender: 'bot',
       time: getCurrentTime()
     });
@@ -350,16 +411,16 @@ const clearChatHistory = () => {
 // Parse markdown to HTML with proper color inheritance
 const parseMarkdown = (text: string): string => {
   if (!text) return '';
-  
+
   // Split by lines to handle line-by-line processing
   let lines = text.split('\n');
   let html = '';
   let inList = false;
   let listItems: string[] = [];
-  
+
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].trim();
-    
+
     // Handle headers with explicit color styling
     if (line.startsWith('### ')) {
       if (inList) {
@@ -408,14 +469,14 @@ const parseMarkdown = (text: string): string => {
         listItems = [];
         inList = false;
       }
-      
+
       // Process bold and italic with color classes
       line = line.replace(/\*\*(.*?)\*\*/g, '<strong class="markdown-bold">$1</strong>');
       line = line.replace(/\*(.*?)\*/g, '<em class="markdown-italic">$1</em>');
-      
+
       // Process inline code with color classes
       line = line.replace(/`(.*?)`/g, '<code class="markdown-code">$1</code>');
-      
+
       html += `<p class="markdown-paragraph">${line}</p>`;
     }
     // Handle empty lines
@@ -430,32 +491,25 @@ const parseMarkdown = (text: string): string => {
       }
     }
   }
-  
+
   // Close any remaining list with color classes
   if (inList) {
     html += '<ul class="markdown-list">' + listItems.map(item => `<li class="markdown-item">${item}</li>`).join('') + '</ul>';
   }
-  
+
   // Handle code blocks with color classes (after line processing)
   html = html.replace(/```([\s\S]*?)```/g, '<pre class="markdown-pre"><code class="markdown-code-block">$1</code></pre>');
-  
+
   return html;
 };
 
 // Test function for debugging (kept for potential future debugging)
 const testFunction = () => {
-  console.log("=== TEST FUNCTION CALLED ===");
-  console.log("Auth store available:", !!authStore);
-  console.log("Backend URL:", authStore?.backend_url);
-  console.log("User input:", userInput.value);
-  console.log("Messages:", messages.value);
-  
+
   // Test the sendMessage function
   if (userInput.value?.trim()) {
-    console.log("Calling sendMessage directly...");
     sendMessage();
   } else {
-    console.log("No user input to test");
   }
 };
 
@@ -899,8 +953,8 @@ const testFunction = () => {
 
 /* Markdown headers with explicit colors */
 .markdown-content .markdown-header,
-.markdown-content h1, 
-.markdown-content h2, 
+.markdown-content h1,
+.markdown-content h2,
 .markdown-content h3 {
   margin: 12px 0 6px 0;
   color: #1f2937 !important;
@@ -915,16 +969,16 @@ const testFunction = () => {
 }
 
 .markdown-content h1,
-.markdown-content .markdown-header:first-child { 
-  font-size: 1.3em; 
+.markdown-content .markdown-header:first-child {
+  font-size: 1.3em;
 }
 
-.markdown-content h2 { 
-  font-size: 1.2em; 
+.markdown-content h2 {
+  font-size: 1.2em;
 }
 
-.markdown-content h3 { 
-  font-size: 1.1em; 
+.markdown-content h3 {
+  font-size: 1.1em;
 }
 
 /* Markdown paragraphs with explicit colors */
@@ -1079,35 +1133,35 @@ const testFunction = () => {
   .chatbot-page {
     padding: 10px;
   }
-  
+
   .chatbot-container {
     max-width: 100%;
     border-radius: 12px;
   }
-  
+
   .chat-header {
     padding: 15px;
     min-height: 70px;
   }
-  
+
   .chat-avatar {
     width: 40px;
     height: 40px;
   }
-  
+
   .chat-info h2 {
     font-size: 1.1rem;
   }
-  
+
   .chat-messages {
     padding: 15px;
     min-height: 300px;
   }
-  
+
   .suggested-prompts {
     max-width: 300px;
   }
-  
+
   .suggested-prompt {
     font-size: 0.85rem;
     padding: 10px 16px;
@@ -1118,40 +1172,51 @@ const testFunction = () => {
   .chatbot-page {
     padding: 5px;
   }
-  
+
   .chat-header {
     padding: 12px;
   }
-  
+
   .chat-info h2 {
     font-size: 1rem;
   }
-  
+
   .chat-info p {
     font-size: 0.8rem;
   }
-  
+
   .chat-messages {
     padding: 12px;
     gap: 10px;
   }
-  
+
   .message-bubble {
     max-width: 85%;
     padding: 10px 15px;
   }
-  
+
   .chat-input {
     padding: 15px;
   }
-  
+
   .input-form {
     padding: 4px 12px;
   }
-  
+
   .voice-btn, .send-btn {
     width: 36px;
     height: 36px;
   }
+}
+.voice-notice {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  text-align: center;
+  color: #8a5a00;
+  line-height: 1.4;
+}
+
+.dark-mode .voice-notice {
+  color: #f0c674;
 }
 </style>

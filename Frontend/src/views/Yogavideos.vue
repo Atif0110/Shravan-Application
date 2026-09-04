@@ -96,7 +96,6 @@ async function fetchYogaVideos() {
     });
     difficultyLevels.value = Array.from(uniqueDifficulties);
   } catch (err) {
-    console.error('Error fetching yoga videos:', err);
     error.value = 'Could not load yoga videos. Please try again later.';
   } finally {
     loading.value = false;

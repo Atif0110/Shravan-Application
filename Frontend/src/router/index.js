@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LandingPage from '../views/LandingPage.vue'
+import { auth } from '../stores/auth'
 import TertiaryUserDashboard from '@/views/TertiaryUserDashboard.vue'
 
 const router = createRouter({
@@ -144,6 +145,16 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
   ],
+})
+
+
+// Route guard: pages marked requiresAuth redirect to the login screen
+// when nobody is signed in, so users never land on an empty private page.
+router.beforeEach((to) => {
+  if (to.meta && to.meta.requiresAuth && !auth().isAuthenticated) {
+    return { name: 'userlogin' }
+  }
+  return true
 })
 
 export default router

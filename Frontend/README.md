@@ -1,29 +1,21 @@
-# SHARVAN
+# SHRAVAN Web Client
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 3 client for the SHRAVAN health platform.
 
-## Recommended IDE Setup
+## Setup
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
+```bash
 npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
 npm run dev
 ```
 
-### Compile and Minify for Production
+Production build:
 
-```sh
+```bash
 npm run build
+npm run preview
 ```
+
+Set `VITE_BACKEND_URL` in `.env` when the API is not running at `http://localhost:5000`.
+
+Authentication uses the backend session cookie. State-changing requests receive a CSRF token through `src/api.js` and send it in `X-CSRF-Token`.

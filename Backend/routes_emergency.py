@@ -1,44 +1,34 @@
-from flask import Flask, request, jsonify, session
+from flask import request, jsonify
 from models import db, EmergencyContacts
 from flasgger.utils import swag_from
+from security import current_user_id
+
 
 def routes_emergency(app, db):
     @app.route('/api/emergency-contacts', methods=['POST'])
     @swag_from("docs/add_emergency_contact.yml")
     def add_emergency_contact():
-        # print(session.get('user_id'))
-        # user_id = session.get('user_id')
-        # if not user_id:
-        #     return jsonify({'error': 'Not authenticated'}), 401
-
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         if not data.get('contact_name') or not data.get('contact_number'):
-            return jsonify({'error': 'Contact name and number are required'}), 400
+            return jsonify({'error': 'Contact name and number are required', 'status': 'fail'}), 400
 
-        new_contact = EmergencyContacts(
-            user_id=data['user_id'],
-            contact_name=data['contact_name'],
-            contact_number=data['contact_number'],
-            relation=data.get('relation')
+        contact = EmergencyContacts(
+            user_id=current_user_id(),
+            contact_name=str(data['contact_name']).strip()[:120],
+            contact_number=str(data['contact_number']).strip()[:30],
+            relation=str(data.get('relation') or '').strip()[:80] or None,
         )
-        print()
-        db.session.add(new_contact)
+        db.session.add(contact)
         db.session.commit()
-        return jsonify({'message': 'Emergency contact added'}), 201
+        return jsonify({'message': 'Emergency contact added', 'status': 'success'}), 201
 
     @app.route('/api/emergency-contacts', methods=['PUT'])
     @swag_from("docs/get_emergency_contacts.yml")
     def get_emergency_contacts():
-        # user_id = session.get('user_id')
-        # if not user_id:
-        #     return jsonify({'error': 'Not authenticated'}), 401
-        data = request.get_json()
-        print(data.get('user_id'))
-        contacts = EmergencyContacts.query.filter_by(user_id=data.get('user_id')).all()
-        contact_list = [{
+        contacts = EmergencyContacts.query.filter_by(user_id=current_user_id()).all()
+        return jsonify({'contacts': [{
             'contact_id': c.emergency_contact_id,
             'name': c.contact_name,
             'number': c.contact_number,
-            'relation': c.relation
-        } for c in contacts]
-        return jsonify({'contacts': contact_list}), 200
+            'relation': c.relation,
+        } for c in contacts]}), 200

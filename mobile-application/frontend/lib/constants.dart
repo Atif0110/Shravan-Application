@@ -1,4 +1,13 @@
-
-// const String baseUrl = 'https://cure-cue-623610430751.europe-west1.run.app/';
-const String baseUrl = 'http://10.42.242.84:8080';
-// const String primaryColor = Color(0xFF32A852);
+// Base URL of the Shravan backend API.
+//
+// The old hardcoded LAN address (10.42.242.84) only worked on one network and
+// silently broke every API call everywhere else. Point the app at the right
+// server at build time instead:
+//
+//   flutter build apk --dart-define=API_BASE=https://your-backend.example.com/
+//
+// The value below is only a local-development fallback.
+const String baseUrl = String.fromEnvironment(
+  'API_BASE',
+  defaultValue: 'http://127.0.0.1:8080',
+);

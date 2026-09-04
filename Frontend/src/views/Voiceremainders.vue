@@ -1,8 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
+import axios from 'axios'
+import { auth } from '../stores/auth'
 
-const token = localStorage.getItem('token')
+const authStore = auth()
 const title = ref('')
 const selectedFile = ref(null)
 const voiceReminders = ref([])
@@ -21,31 +23,21 @@ async function uploadReminder() {
   formData.append('audio', selectedFile.value)
 
   try {
-    const res = await fetch('/api/voice-reminders', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
-      body: formData
-    })
-    const saved = await res.json()
-    voiceReminders.value.push(saved)
+    // Session-cookie auth (same as the rest of the app) -- no token header.
+    const res = await axios.post(`${authStore.backend_url}/api/voice-reminders`, formData)
+    voiceReminders.value.push(res.data)
     title.value = ''
     selectedFile.value = null
   } catch (err) {
-    console.error('Upload failed:', err)
   }
 }
 
 
 async function fetchVoiceReminders() {
   try {
-    const res = await fetch('/api/voice-reminders', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    voiceReminders.value = await res.json()
+    const res = await axios.get(`${authStore.backend_url}/api/voice-reminders`)
+    voiceReminders.value = res.data
   } catch (err) {
-    console.error('Error fetching voice reminders:', err)
   }
 }
 
@@ -87,7 +79,7 @@ onMounted(fetchVoiceReminders)
             <div>
               <strong>{{ reminder.title }}</strong>
               <br />
-              <audio :src="reminder.audioUrl" controls />
+              <audio :src="authStore.backend_url + reminder.audioUrl" controls />
             </div>
           </li>
         </ul>

@@ -134,7 +134,6 @@ onMounted(async () => {
     const response = await axios.get(`${auth_store.backend_url}/api/stats`);
     stats.value = response.data;
   } catch (error) {
-    console.error('Error fetching statistics:', error);
     // Fallback to demo numbers if API fails
     stats.value = {
       users: 1500,

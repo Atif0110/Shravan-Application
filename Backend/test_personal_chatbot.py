@@ -4,7 +4,6 @@ Test script for the personal chatbot functionality
 
 def test_generate_personalized_name():
     """Test the name generation function"""
-    # Mock the function since we can't import directly
     def generate_personalized_name(gender, personality_type, age):
         names = {
             'male': {
@@ -22,22 +21,21 @@ def test_generate_personalized_name():
                 'empathetic': ['Rachel', 'Rebecca', 'Samantha', 'Nicole', 'Michelle']
             }
         }
-        
+
         gender_key = gender.lower() if gender.lower() in names else 'female'
         personality_key = personality_type.lower() if personality_type.lower() in names[gender_key] else 'friendly'
-        
+
         import random
         random.seed(hash(f"{gender}{personality_type}{age}"))
         return random.choice(names[gender_key][personality_key])
-    
-    # Test cases
+
     test_cases = [
         ('female', 'analytical', 28),
         ('male', 'creative', 35),
         ('female', 'professional', 45),
         ('male', 'empathetic', 22)
     ]
-    
+
     print("Testing name generation:")
     for gender, personality, age in test_cases:
         name = generate_personalized_name(gender, personality, age)
@@ -65,7 +63,7 @@ def test_prompt_generation():
         }
 
         personality_desc = personality_traits.get(personality_type.lower(), personality_traits['friendly'])
-        
+
         expertise_context = ""
         if expertise_areas:
             if isinstance(expertise_areas, list):
@@ -88,10 +86,10 @@ Key Instructions:
 - Maintain consistency with your age and life experience
 """
         return prompt.strip()
-    
+
     print("\nTesting prompt generation:")
     test_prompt = generate_personalized_prompt(
-        "Charlotte", "female", 28, "Data Scientist", "analytical", 
+        "Charlotte", "female", 28, "Data Scientist", "analytical",
         ["Machine Learning", "Statistics"], "detailed"
     )
     print("Generated prompt preview:")

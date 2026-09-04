@@ -2,9 +2,9 @@ from flask import Flask, request, jsonify, session
 from models import *
 from datetime import date, datetime
 from flasgger.utils import swag_from
+from security import current_user_id
 
 def routes_health(app, db):
-    # Endpoint for the senior to log taking a medicine
     @app.route('/api/medicine-logs', methods=['POST'])
     @swag_from("docs/log_medicine_intake.yml")
     def log_medicine_intake():
@@ -14,23 +14,17 @@ def routes_health(app, db):
 
         data = request.get_json()
         reminder_id = data.get('reminder_id')
-        status = data.get('status', 'taken')  # 'taken' or 'skipped'
+        status = data.get('status', 'taken')
 
         if not reminder_id:
             return jsonify({'error': 'Reminder ID is required'}), 400
 
-        # Make sure the reminder actually belongs to the logged-in user,
-        # same check the other reminder routes use.
         reminder = Reminders.query.filter_by(reminder_id=reminder_id, user_id=user_id).first()
         if not reminder:
             return jsonify({'error': 'Reminder not found or access denied', 'status': 'fail'}), 404
 
         today = date.today()
 
-        # If this reminder was already logged today, update that row instead
-        # of inserting a second one -- otherwise tapping "Taken" twice (or a
-        # refresh replaying the request) would leave two log rows for the
-        # same medicine on the same day.
         existing_log = MedicineLogs.query.filter_by(reminder_id=reminder_id, log_date=today).first()
         if existing_log:
             existing_log.status = status
@@ -50,7 +44,12 @@ def routes_health(app, db):
     @app.route('/api/users/<int:user_id>/health-summary', methods=['GET'])
     @swag_from("docs/get_health_summary.yml")
     def get_health_summary(user_id):
-        
+
+        if current_user_id() != user_id:
+            user = User.query.filter_by(user_id=current_user_id()).first()
+            if not user or not user.role or user.role.name != 'ngo':
+                return jsonify({'error': 'Insufficient permissions', 'status': 'fail'}), 403
+
         today = date.today()
         logs = MedicineLogs.query.join(Reminders).filter(Reminders.user_id == user_id, MedicineLogs.log_date == today).all()
 

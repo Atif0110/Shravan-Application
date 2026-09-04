@@ -1,4 +1,5 @@
 <script setup>
+import { secureFetch } from '@/api'
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -50,53 +51,32 @@ const displayedDoctors = computed(() => {
 
 async function reverseGeocode(lat, lng) {
   try {
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
-    );
-
-    if (!response.ok) {
-      throw new Error('Geocoding request failed');
-    }
-    
+    const url = GOOGLE_MAPS_API_KEY
+      ? `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
+      : `${backend_url}/api/geocode/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`;
+    const response = await secureFetch(url);
+    if (!response.ok) throw new Error('Geocoding request failed');
     const data = await response.json();
-    
-    if (data.status === 'OK' && data.results.length > 0) {
-      return data.results[0].formatted_address;
-    } else {
-      console.warn('Geocoding failed:', data.status);
-      return null;
-    }
+    return GOOGLE_MAPS_API_KEY ? data.results?.[0]?.formatted_address || null : data.address || null;
   } catch (error) {
-    console.error('Error in reverse geocoding:', error);
     return null;
   }
 }
 
 async function geocodePlace(placeName) {
   try {
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(placeName)}&key=${GOOGLE_MAPS_API_KEY}`
-    );
-
-    if (!response.ok) {
-      throw new Error('Geocoding request failed');
-    }
-    
+    const url = GOOGLE_MAPS_API_KEY
+      ? `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(placeName)}&key=${GOOGLE_MAPS_API_KEY}`
+      : `${backend_url}/api/geocode/search?q=${encodeURIComponent(placeName)}`;
+    const response = await secureFetch(url);
+    if (!response.ok) throw new Error('Geocoding request failed');
     const data = await response.json();
-    
-    if (data.status === 'OK' && data.results.length > 0) {
-      const location = data.results[0].geometry.location;
-      return {
-        lat: parseFloat(location.lat.toFixed(4)),
-        lng: parseFloat(location.lng.toFixed(4)),
-        formatted_address: data.results[0].formatted_address
-      };
-    } else {
-      console.warn('Geocoding failed:', data.status);
-      return null;
+    if (GOOGLE_MAPS_API_KEY) {
+      const location = data.results?.[0]?.geometry?.location;
+      return location ? { lat: Number(location.lat), lng: Number(location.lng), formatted_address: data.results[0].formatted_address } : null;
     }
+    return data.location || null;
   } catch (error) {
-    console.error('Error in geocoding:', error);
     return null;
   }
 }
@@ -106,12 +86,11 @@ async function fetchDoctors(lat, lon, radius = 1000, specialist = 'general physi
   error.value = '';
 
   try {
-    const response = await fetch(`${backend_url}/api/doctor-finder`, {
+    const response = await secureFetch(`${backend_url}/api/doctor-finder`, {
       credentials: 'include',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
       },
       body: JSON.stringify({
         latitude: lat,
@@ -129,7 +108,6 @@ async function fetchDoctors(lat, lon, radius = 1000, specialist = 'general physi
     }
 
     const data = await response.json();
-    console.log('Doctor Finder API Response:', data);
     
     const doctorData = [];
     
@@ -159,21 +137,18 @@ async function fetchDoctors(lat, lon, radius = 1000, specialist = 'general physi
             });
           }
         });
-        console.log("DoctorData", doctorData);
       }
     }
     
     doctors.value = doctorData;
     searchPerformed.value = true;
 
-    console.log("Doctors:", doctors.value);
 
     if (doctorData.length === 0) {
       error.value = 'No doctors found for the selected specialty in your area. Try expanding your search radius or selecting a different specialty.';
     }
     
   } catch (err) {
-    console.error('Error fetching doctors:', err);
     error.value = `Failed to fetch doctors: ${err.message}`;
     doctors.value = [];
   } finally {
@@ -274,7 +249,6 @@ async function copyContact() {
         copySuccess.value = false;
       }, 2000);
     } catch (err) {
-      console.error('Failed to copy contact:', err);
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
       textArea.value = selectedDoctor.value.contact;

@@ -277,7 +277,6 @@ async function fetchAsanas() {
       error.value = 'Failed to load asanas';
     }
   } catch (err) {
-    console.error('Error fetching asanas:', err);
     error.value = 'Could not load yoga asanas. Please try again later.';
   } finally {
     loading.value = false;
@@ -311,7 +310,6 @@ function getThumbnailUrl(googleDriveUrl) {
     
     return googleDriveUrl;
   } catch (error) {
-    console.warn('Error processing image URL:', error);
     return '/images/placeholder.jpg';
   }
 }
@@ -343,7 +341,6 @@ function handleModalImageLoad() {
 }
 
 function handleThumbnailError(event) {
-  console.warn(`Thumbnail failed to load: ${event.target.src}`);
   event.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjVGNUY1Ii8+CjxwYXRoIGQ9Ik0xOTUgMTMwSDIwNVYxNzBIMTk1VjEzMFpNMTc1IDEzMEgxODVWMTcwSDE3NVYxMzBaTTE3NSAxNTBIMjA1VjE2MEgxNzVWMTUwWiIgZmlsbD0iI0NDQ0NDQyIvPgo8dGV4dCB4PSIyMDAiIHk9IjIwMCIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiBmaWxsPSIjOTk5OTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5Zb2dhIEltYWdlPC90ZXh0Pgo8L3N2Zz4K';
   
   // Mark loading as complete
@@ -481,7 +478,6 @@ function updateSpeed() {
 }
 
 function handleImageError(event) {
-  console.warn(`Failed to load image: ${event.target.src}`);
   modalImageLoading.value = false;
   event.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgdmlld0JveD0iMCAwIDYwMCA0MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI2MDAiIGhlaWdodD0iNDAwIiBmaWxsPSIjRjVGNUY1Ii8+CjxjaXJjbGUgY3g9IjMwMCIgY3k9IjIwMCIgcj0iNTAiIGZpbGw9IiNEREREREQiLz4KPHRleHQgeD0iMzAwIiB5PSIyODAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzk5OTk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+SW1hZ2UgTm90IEZvdW5kPC90ZXh0Pgo8L3N2Zz4K';
 }
